@@ -38,10 +38,18 @@ get_bounded_theta <- function(x, y, z, N, confidence){
   #FACTORIALLY HARD in number of instruments?? Want bounds in eigenvalues and eigenvectors on cov_z
   #Need to grid search through all allowed cov values?
   #Could it be cheap to sample random allowed cov matrices (maybe always including extreme points) and update bounds on e_vals, e_vecs until bored?
-  #Also could seed a set of gradient ascent/descent procedures to avoid the curse of dimensionality?
+  #Also could seed a set of gradient ascent/descent procedures to avoid the curse of dimensionality? Would use chain rule for tensors.
 
-  
-  
+  #What to do with degenerate/overlapping (within error margin) eigenvalues? Let uncertainty in eigenvectors be high since this doesn't affect the results?
+
+  #FIRST PASS PROCEDURE:
+
+    # Randomly sample covariance matrices from the bounds calculated above. If they satisfy the leakage constraint imposed, then move to next step.
+    # 
+    #
+    #
+    #
+    #
   
   }
 
@@ -68,4 +76,7 @@ get_bounded_multiplication <- function(factor_1_bounds, factor_2_bounds){
   return( c(min(combinations), max(combinations)) )
   
   }
+
+
+  cov_bounds_by_combinatorics <- function(cov_z_lbounds)
                           
