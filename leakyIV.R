@@ -1,172 +1,219 @@
-# Set working directory
-setwd('~/Documents/UCL/soft_instruments')
-
-# Load libraries, register cores
-library(data.table)
-library(matrixStats)
-library(tidyverse)
-library(doMC)
-registerDoMC(8)
-
-# Simulation script
-source('simulation.R')
-
-# Set seed
-set.seed(123, kind = "L'Ecuyer-CMRG")
-
-# Define soft_iv function
-#' @param dat Input dataset with instruments z, treatment x, and outcome y.
-#' @param tau Upper bound on the L2 norm of gamma.
-#' @param n_rho Number of rhos to evaluate.
+#' Bounding Causal Effects with Leaky Instruments
+#' 
+#' This function estimates bounds on average treatment effects in linear IV 
+#' models under limited violations of the exclusion criterion.
+#' 
+#' @param x Treatment variable. 
+#' @param y Outcome variable.
+#' @param z One or more candidate instrumental variable(s). 
+#' @param tau Upper bound on the p-norm of linear weights \code{gamma} from 
+#'   \code{z} to \code{y}. See details.
+#' @param p Power of the norm on \code{gamma}.
+#' @param beta Method for regressing \code{x} on \code{z}. Options include 
+#'   \code{"ols"} (default), \code{"ridge"}, and \code{"lasso"}. For regularized
+#'   methods, the value of the Lagrange multiplier is learned via 10-fold CV. 
+#'   Alternatively, a numeric vector of length \code{ncol(z)} specifying linear 
+#'   coefficients. 
 #' @param n_boot Number of bootstrap replicates.
 #' @param bayes Use Bayesian bootstrap?
 #' @param parallel Compute bootstrap estimates in parallel?
+#' 
+#' @details 
+#' Instrumental variables are defined by three structural assumptions: they must
+#' be (A1) \emph{relevant}, i.e. associated with the treatment; (A2) 
+#' \emph{unconfounded}, i.e. independent of common causes between treatment and 
+#' outcome; and (A3) \emph{exclusive}, i.e. only affect outcomes through the 
+#' treatment. The \code{leaky_iv} algorithm relaxes (A3), allowing some 
+#' information leakage from IVs \code{z} to outcomes \code{y} in linear 
+#' structural equation models (SEMs). While causal effects are no longer 
+#' identifiable in this setting, tight bounds can be computed with precision.
+#' 
+#' Violations of the exclusion restriction may come in many forms. 
+#' \code{leakyIV} provides native support for thresholding the p-norm of
+#' linear weights \code{gamma} in the structural equation for \code{y}:
+#' \eqn{Y := Z \gamma + X \theta + \epsilon_Y}. Both the threshold \code{tau}
+#' and the power of the norm \code{p} are up to the user. 
+#' 
+#' The uncertainty of associated bounds is estimated via the bootstrap, with 
+#' optional support for Bayesian bootstrapping (Rubin, 1981).
+#' 
+#' @return  
+#' A 2x3 data.frame with the following columns: \code{bound} (lower or upper),
+#' \code{ate} (average treatment effect), and \code{se} (standard error). 
+#' 
+#' @references  
+#' Rubin, D.R. (1981). The Bayesian bootstrap. \emph{Ann. Statist.}, 
+#' \emph{9}(1): 130-134. 
+#' 
+#' @examples  
+#' # Load data
+#' BLAH
+#' 
+#' # Run leaky IV
+#' df <- leakyIV(dat$z, dat$x, dat$y, tau = 1)
+#' 
+#' # Compute 95% confidence interval
+#' 
+#' @export 
+#' @import data.table 
+#' @import glmnet
+#' @importFrom matrixStats cov.wt
+#' @importFrom foreach foreach
 
-soft_iv <- function(dat, tau, n_rho, n_boot, bayes, parallel) {
+leakyIV <- function(
+    x,
+    y, 
+    z,
+    tau, 
+    p = 2, 
+    beta = 'ols',
+    n_boot = 1999, 
+    bayes = FALSE, 
+    parallel = TRUE) {
+  
+  # Preliminaries
+  if (is.matrix(z) || is.data.frame(z)) {
+    n_z <- nrow(z)
+    d_z <- ncol(z)
+  } else {
+    n_z <- length(z)
+    d_z <- 1L
+  }
+  stopifnot(
+    is.numeric(z) || is.matrix(z) || is.data.frame(z),
+    is.numeric(x), is.numeric(y), is.numeric(p), # SOMETHING FOR BETA?
+    is.numeric(n_boot), is.logical(bayes), 
+    is.logical(parallel),
+    length(x) == n_z,
+    length(y) == n_z
+  )
+  dat <- cbind(z, x, y)
   n <- nrow(dat)
-  p <- ncol(dat)
-  d_z <- sum(grepl('z', colnames(dat)))
-  boot_loop <- function(b) {
-    if (b == 0) {
-      Sigma <- cov(dat)
+  d <- ncol(dat)
+  d_z <- d - 2L
+  if (beta == 'ridge') {
+    alpha_glmnet <- 1
+  } else if (beta == 'lasso') {
+    alpha_glmnet <- 0
+  }
+  
+  # Bootstrap samples or weights
+  if (n_boot > 0) {
+    if (isTRUE(bayes)) {
+      # Draw Dirichlet weights
+      w_mat <- matrix(rexp(n * n_boot), ncol = n_boot)
+      w_mat <- (w_mat / rowSums(w_mat)) * n
     } else {
-      if (bayes) {
-        # Draw Dirichlet weights
-        wts <- rexp(n)
-        wts <- (wts / sum(wts)) * n
-        # Estimate eta_x
-        f1 <- lm(x ~ ., data = select(dat, -y), weights = wts)
-        eta_x <- sqrt(weighted.mean(x = residuals(f1)^2, w = wts))
-        # Estimate data covariance
-        Sigma <- cov.wt(dat, wt = wts)$cov
+      # Draw bootstrap samples
+      b_mat <- matrix(sample(n, n * n_boot, replace = TRUE), ncol = n_boot)
+    }
+  }
+
+  # Compute bounds
+  loop <- function(b) {
+    
+    # Compute Sigma and eta_x
+    if (n_boot > 1 & isTRUE(bayes)) {
+      wts <- w_mat[, b]
+      # Estimate eta_x
+      if (beta == 'ols') {
+        f1 <- lm(x ~ ., data = dat[, 1:(d - 1)], weights = wts)
+        eps_x <- residuals(f1)
+      } else if (beta %in% c('ridge', 'lasso')) {
+        f1 <- cv.glmnet(z, x, alpha = alpha_glmnet, weights = wts)
+        eps_x <- x - predict(f1, z, s = 'lambda.min')
+      } else {
+        eps_x <- x - beta %*% z # WITH WEIGHTS THO?
+      }
+      eta_x <- sqrt(weighted.mean(x = eps_x^2, w = wts))
+      # Estimate data covariance
+      Sigma <- cov.wt(dat, wt = wts)$cov
+    } else {
+      if (n_boot == 0) {
+        tmp <- dat
       } else {
         # Draw bootstrap sample
-        tmp <- dat[sample.int(n, replace = TRUE)]
-        # Estimate eta_x
-        f1 <- lm(x ~ ., data = select(tmp, -y))
-        eta_x <- sqrt(mean((residuals(f1)^2)))
-        # Estimate data covariance
-        Sigma <- cov(tmp)
+        tmp <- dat[b_mat[, b], ]
       }
+      # Estimate eta_x
+      if (beta == 'ols') {
+        f1 <- lm(x ~ ., data = tmp[, 1:(d - 1)])
+        eps_x <- residuals(f1)
+      } else if (beta %in% c('ridge', 'lasso')) {
+        f1 <- cv.glmnet(tmp[, seq_len(d_z)], tmp$x, alpha = alpha_glmnet)
+        eps_x <- tmp$x - predict(f1, tmp[, seq_len(d_z)], s = 'lambda.min')
+      } else {
+        eps_x <- x - beta %*% z
+      }
+      eta_x <- sqrt(mean(eps_x^2))
+      # Estimate data covariance
+      Sigma <- cov(tmp)
     }
+    
+    # Extract elements of covariance matrix
     Sigma_z <- Sigma[seq_len(d_z), seq_len(d_z)]
     Theta_z <- solve(Sigma_z)
-    Theta_z2 <- Theta_z %*% Theta_z
-    Sigma_zy <- matrix(Sigma[seq_len(d_z), p], ncol = 1)
+    Sigma_zy <- matrix(Sigma[seq_len(d_z), d], ncol = 1L)
     Sigma_yz <- t(Sigma_zy)
-    Sigma_zx <- matrix(Sigma[seq_len(d_z), p - 1], ncol = 1)
+    Sigma_zx <- matrix(Sigma[seq_len(d_z), d - 1L], ncol = 1L)
     Sigma_xz <- t(Sigma_zx)
-    sigma_xy <- Sigma[p, p - 1]
-    var_x <- Sigma[p - 1, p - 1]
-    var_y <- Sigma[p, p]
-    # Define
-    aa <- as.numeric(Sigma_xz %*% Theta_z2 %*% Sigma_zx)
-    bb <- as.numeric(Sigma_xz %*% Theta_z2 %*% Sigma_zy)
-    cc <- as.numeric(Sigma_yz %*% Theta_z2 %*% Sigma_zx)
-    dd <- as.numeric(Sigma_xz %*% Theta_z %*% Sigma_zy)
-    ee <- as.numeric(Sigma_xz %*% Theta_z %*% Sigma_zx)
-    ff <- as.numeric(Sigma_yz %*% Theta_z %*% Sigma_zy)
-    # Find tau-feasible region
-    lo_tau <- (bb - sqrt(aa * (tau - cc) + bb^2)) / aa
-    hi_tau <- (bb + sqrt(aa * (tau - cc) + bb^2)) / aa
-    # Find rho-feasible region
-    alpha_fn <- function(rho) {
-      gg <- (ee - var_x) * (1 + ((ee - var_x) / (eta_x^2 * rho^2)))
-      hh <- -(dd - sigma_xy) * (1 + ((ee - var_x) / (eta_x^2 * rho^2)))
-      ii <- ((dd - sigma_xy)^2 / (eta_x^2 * rho^2)) + ff - var_y
-      if (rho < 0) {
-        alpha <- (-hh + sqrt(hh^2 - gg * ii)) / gg 
-      } else {
-        alpha <- (-hh - sqrt(hh^2 - gg * ii)) / gg 
-      }
-      return(alpha)
+    sigma_xy <- Sigma[d, d - 1L]
+    var_x <- Sigma[d - 1L, d - 1L]
+    var_y <- Sigma[d, d]
+    
+    # Bounding
+    aa <- as.numeric(Sigma_xz %*% Theta_z %*% Sigma_zx) - var_x
+    bb <- as.numeric(Sigma_xz %*% Theta_z %*% Sigma_zy) - sigma_xy
+    cc <- as.numeric(Sigma_yz %*% Theta_z %*% Sigma_zy) - var_y
+    theta_fn <- function(rho) {
+      theta <- bb / aa - sign(rho) * sqrt((bb^2 - aa * cc) * (1 + aa / (eta_x^2 * rho^2))) / 
+        (aa * (1 + aa / (eta_x^2 * rho^2)))
+      return(theta)
     }
-    lo_rho <- alpha_fn(0.9999)
-    hi_rho <- alpha_fn(-0.9999)
-    # Find the tightest bound
-    alpha_min <- max(c(lo_tau, lo_rho))
-    alpha_max <- min(c(hi_tau, hi_rho))
-    # Compute corresponding values of rho
-    rho_fn <- function(alpha) {
-      RETURN_RHO
+    norm_fn <- function(rho) {
+      theta <- theta_fn(rho)
+      gamma <- as.numeric(Theta_z %*% (Sigma_zy - theta * Sigma_zx))
+      norm <- (sum(abs(gamma)^p))^(1 / p)
+      return(norm)
     }
-    rho_min <- rho_fn(alpha_max)
-    rho_max <- rho_fn(alpha_min)
-    # Optionally return rho-alpha grid
-    if (is.null(n_rho)) {
-      out <- data.frame('alpha' = c(alpha_min, alpha_max), 
-                        'rho' = c(rho_max, rho_min))
+    loss_fn <- function(rho) {
+      norm <- norm_fn(rho)
+      loss <- (tau - norm)^2
+      return(loss)
+    }
+    min_norm <- optim(0, norm_fn, method = 'Brent', lower = -1, upper = 1)
+    if (tau < min_norm$value) {
+      warning('tau is too low, resulting in an empty feasible region. ',
+              'Consider rerunning with a higher threshold.')
+      theta_lo <- theta_hi <- NA_real_
     } else {
-      rhos <- seq(rho_max, rho_min, length.out = n_rho)
-      out <- data.frame('alpha' = sapply(rhos, function(r) alpha_fn(r)), 
-                        'rho' = rhos)
+      rho_star <- min_norm$par
+      rho_lo <- optim(mean(c(-1, rho_star)), loss_fn, method = 'Brent', 
+                      lower = -1, upper = rho_star)$par
+      rho_hi <- optim(mean(c(rho_star, 1)), loss_fn, method = 'Brent', 
+                      lower = rho_star, upper = 1)$par
+      theta_lo <- theta_fn(rho_hi)
+      theta_hi <- theta_fn(rho_lo)
     }
+    
+    # Export
+    out <- data.table(b, theta_lo, theta_hi)
     return(out)
   }
-  # Run bootstrap
-  if (is.null(n_boot)) {
-    boot_out <- boot_loop(0)
-    if(is.null(n_rho)) {
-      out <- data.frame('bound' = c('lower', 'upper'),
-                        'alpha' = boot_out$alpha, 
-                        'se' = NA_real_,
-                        'rho' = boot_out$rho)
-    } else {
-      
-      
-      
-    }
-    out <- data.frame('alpha' = alpha, 'se' = NA_real_, 
-                      'tau_in' = tau, 'rho_in' = rhos)
-    out <- out[!is.na(out$alpha), ]
+  
+  # Optionally compute in parallel
+  if (n_boot == 0) {
+    out <- loop(0)
   } else {
-    if (parallel) {
-      alpha <- foreach(i = seq_len(n_boot), .combine = cbind) %dopar% 
-        boot_loop(i)
+    if (isTRUE(parallel)) {
+      out <- foreach(bb = seq_len(n_boot), .combine = rbind) %dopar% loop(bb)
     } else {
-      alpha <- sapply(seq_len(n_boot), function(i) boot_loop(i))
+      out <- foreach(bb = seq_len(n_boot), .combine = rbind) %do% loop(bb)
     }
-    out <- data.frame('alpha' = rowMeans(alpha, na.rm = TRUE), 
-                      'se' = rowSds(alpha, na.rm = TRUE), 
-                      'tau_in' = tau, 'rho_in' = rhos)
-    out <- na.omit(out)
   }
+  
+  # Export
   return(out)
 }
-
-# Loop over different data configurations
-loop_fn <- function(idx_b, alpha_b, z_rho_b, rho_b, r2_xb, r2_yb, prop_b) {
-  tmp <- sim_dat(
-    n = 1000, d_z = 4, z_cnt = TRUE, z_rho = z_rho_b,
-    rho = rho_b, alpha = alpha_b, r2_x = r2_xb, r2_y = r2_yb, 
-    pr_valid = prop_b, idx_b
-  )
-  # Assume oracle access to tau
-  soft_iv(tmp$dat, sum(tmp$params$gamma^2), n_rho = 100, 
-          n_boot = 200, bayes = FALSE, parallel = FALSE) %>%
-    mutate('ACE' = alpha_b, 'z_rho' = z_rho_b, 'rho' = rho_b,  
-           'r2_x' = r2_xb, 'r2_y' = r2_yb, 'pr_valid' = prop_b) %>%
-    return(.)
-}
-# Execute in parallel
-df <- foreach(alphas = c(-2, -1, 1, 2), .combine = rbind) %:%
-  foreach(rhos = c(-0.75, -0.5, -0.25, 0.25, 0.5, 0.75), .combine = rbind) %dopar%
-  loop_fn(1, alphas, 0, rhos, 0.75, 0.75, 0)
-
-# Plot results
-df %>%
-  ggplot(aes(rho_in, alpha)) + 
-  geom_ribbon(aes(ymin = alpha - qnorm(0.975) * se, 
-                  ymax = alpha + qnorm(0.975) * se), alpha = 0.2) +
-  geom_line(size = 0.25) + 
-  geom_hline(aes(yintercept = ACE), color = 'red', linetype = 'dashed') + 
-  geom_vline(aes(xintercept = rho), color = 'red', linetype = 'dashed') +
-  geom_hline(yintercept = 0, color = 'blue') + 
-  theme_bw() + 
-  facet_grid(ACE ~ rho, scales = 'free_y') + 
-  labs(x = 'Unobserved Confounding', y = 'Average Causal Effect')
-
-# Can we write a rho_fn that takes alpha as input?
-
 
 
