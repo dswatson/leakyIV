@@ -124,7 +124,8 @@ leakyIV <- function(
     Sigma = NULL,
     n_boot = NULL, 
     bayes = FALSE, 
-    parallel = TRUE) {
+    parallel = TRUE, 
+    ...) {
   
   # Preliminaries
   if (is.matrix(z) || is.data.frame(z)) {
