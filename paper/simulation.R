@@ -1,4 +1,3 @@
-#' Simulation script for Leaky IV project
 # Set working directory
 setwd('~/Documents/Kings/leakyIV')
 
