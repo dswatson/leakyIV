@@ -7,11 +7,11 @@
 #' @param y Outcome variable.
 #' @param z One or more leaky instrumental variable(s). 
 #' @param tau Either (a) a scalar representing the upper bound on the p-norm of 
-#'   linear weights \code{gamma} from \code{z} to \code{y}; or (b) a vector of 
-#'   length \code{ncol(z)} representing upper bounds on the absolute value of 
-#'   each \code{gamma} coefficient. See details.
-#' @param p Power of the norm on \code{gamma} (only relevant if \code{tau} is 
-#'   scalar).
+#'   linear weights from \code{z} to \code{y}; or (b) a vector of length 
+#'   \code{ncol(z)} representing upper bounds on the absolute value of each such 
+#'   coefficient. See details.
+#' @param p Power of the norm on linear weights from \code{z} to \code{y} (only 
+#'   relevant if \code{tau} is scalar).
 #' @param n_rho Number of rho-values to sweep through in a grid search (only 
 #'   relevant if \code{tau} is a vector).
 #' @param method Estimator for the covariance matrix. Options include 
@@ -34,20 +34,24 @@
 #' outcome; and (A3) \emph{exclusive}, i.e. only affect outcomes through the 
 #' treatment. The \code{leakyIV} algorithm relaxes (A3), allowing some 
 #' information leakage from IVs \code{z} to outcomes \code{y} in linear 
-#' structural equation models (SEMs). While causal effects are no longer 
-#' identifiable in this setting, tight bounds can be computed exactly for 
+#' structural equation models. While the average treatment effect (ATE) is no 
+#' longer identifiable in this setting, tight bounds can be computed exactly for 
 #' scalar \code{tau} and approximately for vector \code{tau}. 
 #' 
-#' We assume the following structural equation for \code{y}: 
-#' \eqn{Y := Z \gamma + X \theta + \epsilon_Y}, where the final summand is an
-#' additive noise term that correlates with the additive noise in the structural
-#' equation for \code{x}: \eqn{X := Z \beta + \epsilon_X}. Violations of the 
-#' exclusion restriction may come in many forms. \code{leakyIV} provides native 
-#' support for two types of information leakage: (a) thresholding the 
-#' p-norm of linear weights \code{gamma} (scalar \code{tau}); and (b)
-#' thresholding the absolute value of each \code{gamma} coefficient one by 
-#' one (vector \code{tau}). In the latter case, we perform a grid search over
-#' a range of \code{n_rho} candidate levels of confounding.
+#' We assume the following structural equation for \code{x}: 
+#' \eqn{X := Z \beta + \epsilon_X}, where the final summand is a noise term that
+#' correlates with the additive noise in the structural equation for \code{y}: 
+#' \eqn{Y := Z \gamma + X \theta + \epsilon_Y}. The ATE is given by the 
+#' parameter \eqn{\theta}. Whereas classical IV models require each \eqn{gamma} 
+#' coefficient to be zero, we permit some direct signal from \code{z} to 
+#' \code{y}. Specifically, \code{leakyIV} provides native support for two types 
+#' of information leakage: (a) thresholding the p-norm of linear weights 
+#' \eqn{gamma} (scalar \code{tau}); and (b) thresholding the absolute value of 
+#' each \eqn{gamma} coefficient one by one (vector \code{tau}). In the latter 
+#' case, we perform a grid search over a range of \code{n_rho} candidate values 
+#' for the correlation coefficient between \eqn{\epsilon_X} and \eqn{\epsilon_Y}, 
+#' recording the min/max ATE consistent with assumptions and data as we vary the 
+#' magnitude and direction of latent confounding.
 #' 
 #' Numerous methods exist for estimating covariance matrices. \code{leakyIV}
 #' provides support for maximum likelihood estimation (the default), as well as
@@ -55,10 +59,10 @@
 #' (Schäfer & Strimmer, 2005) and the graphical lasso via 
 #' \code{glasso::\link[glasso]{glasso}} (Friedman et al., 2007). These latter 
 #' methods are preferable in high-dimensional settings where sample covariance 
-#' matrices may be unstable or not positive definite. Alternatively, users can 
-#' pass a pre-computed covariance matrix via the \code{Sigma} argument.
+#' matrices may be unstable or singular. Alternatively, users can pass a 
+#' pre-computed covariance matrix via the \code{Sigma} argument.
 #' 
-#' Uncertainty can be evaluated in leaky IV models with the bootstrap, provided
+#' Uncertainty can be evaluated in leaky IV models using the bootstrap, provided
 #' that covariances are estimated internally and not passed directly via the 
 #' \code{Sigma} argument. Bootstrapping provides a nonparametric approximate
 #' posterior distribution for min/max values of the average treatment effect of 
@@ -68,9 +72,8 @@
 #' @return  
 #' A data frame with columns for \code{ATE_lo} and \code{ATE_hi}, representing
 #' lower and upper bounds of the partial identification interval for the 
-#' average treatment effect (ATE) of \code{x} on \code{y}. When bootstrapping,
-#' the output data frame contains \code{n_boot} rows, one for each bootstrap
-#' replicate. 
+#' causal effect of \code{x} on \code{y}. When bootstrapping, the output data 
+#' frame contains \code{n_boot} rows, one for each bootstrap replicate. 
 #' 
 #' @references  
 #' Schäfer, J., and Strimmer, K. (2005). A shrinkage approach to large-scale 
