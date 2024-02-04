@@ -3,11 +3,11 @@ Title: Leaky Instrumental Variables
 Version: 0.0.1
 Date: 2024-02-04
 Authors@R: 
-      person(given = "David S.",
-             family = "Watson",
-             role = c("aut"),
-             email = "david.watson@kcl.ac.uk",
-             comment = c(ORCID = "0000-0001-9632-2159"))
+      person(given = 'David S.',
+             family = 'Watson',
+             role = c('aut', 'cre'),
+             email = 'david.watson@kcl.ac.uk',
+             comment = c(ORCID = '0000-0001-9632-2159'))
 Maintainer: David S. Watson <david.watson@kcl.ac.uk>
 Description: Instrumental variables (IVs) are a popular and powerful tool for 
   estimating causal effects in the presence of unobserved confounding. However, 
@@ -20,9 +20,8 @@ Description: Instrumental variables (IVs) are a popular and powerful tool for
   interval for the ATE. This package implements methods for ATE bounding in the 
   leaky IV setting with linear structural equations.
 License: GPL (>= 3)
-URL: https://github.com/bips-hb/arf,
-    https://bips-hb.github.io/arf/
-BugReports: https://github.com/bips-hb/arf/issues
+URL: https://github.com/dswatson/leakyIV
+BugReports: https://github.com/dswatson/leakyIV/issues
 Imports:
     data.table,
     corpcor,
