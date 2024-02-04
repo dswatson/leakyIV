@@ -7,7 +7,7 @@ Authors@R:
              family = "Watson",
              role = c("aut"),
              email = "david.watson@kcl.ac.uk",
-             comment = c(ORCID = "0000-0001-9632-2159")))
+             comment = c(ORCID = "0000-0001-9632-2159"))
 Maintainer: David S. Watson <david.watson@kcl.ac.uk>
 Description: Instrumental variables (IVs) are a popular and powerful tool for 
   estimating causal effects in the presence of unobserved confounding. However, 
