@@ -10,7 +10,10 @@
 #'   linear weights \code{gamma} from \code{z} to \code{y}; or (b) a vector of 
 #'   length \code{ncol(z)} representing upper bounds on the absolute value of 
 #'   each \code{gamma} coefficient. See details.
-#' @param p Power of the norm on \code{gamma}, if \code{tau} is scalar.
+#' @param p Power of the norm on \code{gamma} (only relevant if \code{tau} is 
+#'   scalar).
+#' @param n_rho Number of rho-values to sweep through in a grid search (only 
+#'   relevant if \code{tau} is a vector).
 #' @param method Estimator for the covariance matrix. Options include 
 #'   (a) \code{"mle"}, the default; (b) \code{"shrink"}, an analytic empirical 
 #'   Bayes solution; or (c) \code{"glasso"}, the graphical lasso. See details.
@@ -22,7 +25,7 @@
 #' @param parallel Compute bootstrap estimates in parallel?
 #' @param ... Extra arguments to be passed to graphical lasso estimator if
 #'   \code{method = "glasso"}. Note that the regularization parameter \code{rho}
-#'   is required as input, with no default.
+#'   is required as input, with no default. 
 #' 
 #' @details 
 #' Instrumental variables are defined by three structural assumptions: they must
@@ -43,7 +46,8 @@
 #' support for two types of information leakage: (a) thresholding the 
 #' p-norm of linear weights \code{gamma} (scalar \code{tau}); and (b)
 #' thresholding the absolute value of each \code{gamma} coefficient one by 
-#' one (vector \code{tau}).
+#' one (vector \code{tau}). In the latter case, we perform a grid search over
+#' a range of \code{n_rho} candidate levels of confounding.
 #' 
 #' Numerous methods exist for estimating covariance matrices. \code{leakyIV}
 #' provides support for maximum likelihood estimation (the default), as well as
@@ -104,6 +108,7 @@
 #' leakyIV(x, y, z, tau = 1)
 #' 
 #' @export 
+#' @import data.table
 #' @importFrom corpcor cov.shrink invcov.shrink
 #' @importFrom glasso glasso
 #' @importFrom matrixStats cov.wt
@@ -115,6 +120,7 @@ leakyIV <- function(
     z,
     tau, 
     p = 2, 
+    n_rho = 1999L,
     method = "mle",
     Sigma = NULL,
     n_boot = NULL, 
@@ -137,10 +143,31 @@ leakyIV <- function(
     is.numeric(z) || is.matrix(z) || is.data.frame(z),
     is.numeric(x), is.numeric(y), is.numeric(tau), is.numeric(p), 
     is.character(method), is.numeric(n_boot), is.logical(bayes), 
-    is.logical(parallel),
-    length(x) == n_z, length(y) == n_z, 
-    length(tau) %in% c(1, d_z)
+    is.logical(parallel)
   )
+  if (length(x) != n_z) {
+    stop('x and z must have the same number of samples.')
+  }
+  if (length(y) != n_z) {
+    stop('y and z must have the same number of samples.')
+  }
+  if (!length(tau) %in% c(1, d_z)) {
+    stop('tau must be either a scalar or a vector of length ncol(z).')
+  }
+  if (any(tau < 0)) {
+    stop('tau must be strictly positive.')
+  }
+  if (length(tau) == 1) {
+    if (p < 0) {
+      stop('p must be >= 0.')
+    } else if (p < 1) {
+      warning('Exact solutions are only possible for p >= 1, using approximate ',
+              'methods instead.')
+    }
+  }
+  if (!method %in% c('mle', 'shrink', 'glasso')) {
+    stop('method not recognized. Must be one of "mle", "shrink", or "glasso".')
+  }
   if (!is.null(Sigma)) {
     if (ncol(Sigma) != d_z | nrow(Sigma) != d_z) {
       stop('Pre-computed covariance matrix Sigma must have ncol(z) rows and ', 
@@ -206,44 +233,61 @@ leakyIV <- function(
     phi2 <- var_y - as.numeric(Sigma_yz %*% Theta_z %*% Sigma_zy)
     psi <- sigma_xy - as.numeric(Sigma_xz %*% Theta_z %*% Sigma_zy)
     
-    # A compositional sequence of functions
+    # Compute theta as a function of rho 
     theta_fn <- function(rho) {
       theta <- (psi / eta_x2) - sign(rho) * 
         ((sqrt((1 - 1/rho^2) * (psi^2 - phi2 * eta_x2)))) / 
         (-eta_x2 * (1 - 1/rho^2))
       return(theta)
     }
-    norm_fn <- function(rho) {
-      theta <- theta_fn(rho)
-      gamma <- as.numeric(Theta_z %*% (Sigma_zy - theta * Sigma_zx))
-      norm <- (sum(abs(gamma)^p))^(1 / p)
-      return(norm)
-    }
-    loss_fn <- function(rho) {
-      norm <- norm_fn(rho)
-      loss <- (tau - norm)^2
-      return(loss)
-    }
     
-    # Find the split point: upper and lower bounds lie on either side of
-    # rho_star, assuming tau > min_norm$value
-    min_norm <- optim(0, norm_fn, method = 'Brent', lower = -1, upper = 1)
-    if (tau < min_norm$value) {
-      warning('tau is too low, resulting in an empty feasible region. ',
-              'Consider rerunning with a higher threshold.')
-      ATE_lo <- ATE_hi <- NA_real_
+    if (length(tau) == 1) {
+      # Compute norms as a function of rho
+      norm_fn <- function(rho) {
+        theta <- theta_fn(rho)
+        gamma <- as.numeric(Theta_z %*% (Sigma_zy - theta * Sigma_zx))
+        norm <- (sum(abs(gamma)^p))^(1 / p)
+        return(norm)
+      }
+      # Compute loss as a function of rho
+      loss_fn <- function(rho) {
+        norm <- norm_fn(rho)
+        loss <- (tau - norm)^2
+        return(loss)
+      }
+      # Find the split point: upper and lower bounds lie on either side of
+      # rho_star, assuming tau > min_norm$value
+      min_norm <- optim(0, norm_fn, method = 'Brent', lower = -1, upper = 1)
+      if (tau < min_norm$value) {
+        warning('tau is too low, resulting in an empty feasible region. ',
+                'Consider rerunning with a higher threshold.')
+        ATE_lo <- ATE_hi <- NA_real_
+      } else {
+        rho_star <- min_norm$par
+        rho_lo <- optim(mean(c(-1, rho_star)), loss_fn, method = 'Brent', 
+                        lower = -1, upper = rho_star)$par
+        rho_hi <- optim(mean(c(rho_star, 1)), loss_fn, method = 'Brent', 
+                        lower = rho_star, upper = 1)$par
+        ATE_lo <- theta_fn(rho_hi)
+        ATE_hi <- theta_fn(rho_lo)
+      }
     } else {
-      rho_star <- min_norm$par
-      rho_lo <- optim(mean(c(-1, rho_star)), loss_fn, method = 'Brent', 
-                      lower = -1, upper = rho_star)$par
-      rho_hi <- optim(mean(c(rho_star, 1)), loss_fn, method = 'Brent', 
-                      lower = rho_star, upper = 1)$par
+      # Check criterion
+      tmp <- data.table(rho = seq(-0.999, 0.999, length.out = n_rho))
+      tmp[, sat := sapply(rho, function(r) {
+        theta <- theta_fn(r)
+        gamma <- as.numeric(Theta_z %*% (Sigma_zy - theta * Sigma_zx))
+        out <- all(abs(gamma) <= tau)
+        return(out)
+      })]
+      rho_lo <- tmp[sat == TRUE, min(rho)]
+      rho_hi <- tmp[sat == TRUE, max(rho)]
       ATE_lo <- theta_fn(rho_hi)
       ATE_hi <- theta_fn(rho_lo)
     }
     
     # Export
-    out <- data.frame(ATE_lo, ATE_hi)
+    out <- data.table(ATE_lo, ATE_hi)
     return(out)
   }
   
