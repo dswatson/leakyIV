@@ -40,10 +40,9 @@ vignettes/*.pdf
 
 # Also
 *.Rproj
-
-# Ignore
 .DS_Store
 attic/*
 .ipynb*
 *.pptx
+simulations/*
 
