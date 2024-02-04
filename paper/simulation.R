@@ -99,7 +99,7 @@ fwrite(sim_grd, './simulations/simulation_grid.csv')
 
 # Sample a dataset of n=10k for each setting, to later be partitioned into 
 # 10 datasets of n=1k
-sapply(seq_len(sim_grd$sim_idx), function(i) {
+sapply(seq_len(nrow(sim_grd)), function(i) {
   tmp <- sim_grd[i, ]
   sim_dat(n = 1e4L, d_z = tmp$d_z, z_rho = tmp$z_rho, rho = tmp$rho,
           theta = tmp$theta, r2_x = 0.8, r2_y = 0.8, pr_valid = tmp$pr_valid,
