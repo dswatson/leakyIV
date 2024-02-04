@@ -87,7 +87,6 @@
 #' \emph{9}(1): 130-134. 
 #' 
 #' @examples  
-#' ### Simulate data ###
 #' set.seed(123)
 #' 
 #' # Hyperparameters
@@ -283,10 +282,18 @@ leakyIV <- function(
         out <- all(abs(gamma) <= tau)
         return(out)
       })]
-      rho_lo <- tmp[sat == TRUE, min(rho)]
-      rho_hi <- tmp[sat == TRUE, max(rho)]
-      ATE_lo <- theta_fn(rho_hi)
-      ATE_hi <- theta_fn(rho_lo)
+      if (tmp[, sum(sat)] == 0) {
+        warning('tau is too restrictive, resulting in an empty feasible region. ',
+                'Consider rerunning with different thresholds.')
+        ATE_lo <- ATE_hi <- NA_real_
+      } else if (tmp[, sum(sat)] == 1) {
+        ATE_lo <- ATE_hi <- tmp[sat == TRUE, rho]
+      } else {
+        rho_lo <- tmp[sat == TRUE, min(rho)]
+        rho_hi <- tmp[sat == TRUE, max(rho)]
+        ATE_lo <- theta_fn(rho_hi)
+        ATE_hi <- theta_fn(rho_lo)
+      }
     }
     
     # Export

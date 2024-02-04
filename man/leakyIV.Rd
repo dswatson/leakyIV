@@ -109,7 +109,6 @@ Bayesian bootstrap (Rubin, 1981).
 }
 \examples{
  
-### Simulate data ###
 set.seed(123)
 
 # Hyperparameters
