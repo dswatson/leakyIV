@@ -111,7 +111,6 @@
 #' @import data.table
 #' @importFrom corpcor cov.shrink invcov.shrink
 #' @importFrom glasso glasso
-#' @importFrom matrixStats cov.wt
 #' @importFrom foreach foreach
 
 leakyIV <- function(
