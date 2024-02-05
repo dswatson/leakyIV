@@ -259,8 +259,8 @@ leakyIV <- function(
     eta_x2 <- var_x - as.numeric(Sigma_xz %*% Theta_z %*% Sigma_zx)
     phi2 <- var_y - as.numeric(Sigma_yz %*% Theta_z %*% Sigma_zy)
     psi <- sigma_xy - as.numeric(Sigma_xz %*% Theta_z %*% Sigma_zy)
-    if (any(c(eta_x2, phi2, psi) < 0)) {
-      stop('Covariance estimator implies negative conditional (co)variances. ',
+    if (any(c(eta_x2, phi2) < 0)) {
+      stop('Covariance estimator implies negative conditional variance. ',
            'Consider rerunning with another method.')
     }
     
