@@ -279,6 +279,7 @@ leakyIV <- function(
     } else {
       # Check criterion
       tmp <- data.table(rho = seq(-0.999, 0.999, length.out = n_rho))
+      tmp <- tmp[rho != 0]
       tmp[, sat := sapply(rho, function(r) {
         theta <- theta_fn(r)
         gamma <- as.numeric(Theta_z %*% (Sigma_zy - theta * Sigma_zx))
