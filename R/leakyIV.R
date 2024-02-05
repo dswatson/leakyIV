@@ -237,6 +237,10 @@ leakyIV <- function(
     eta_x2 <- var_x - as.numeric(Sigma_xz %*% Theta_z %*% Sigma_zx)
     phi2 <- var_y - as.numeric(Sigma_yz %*% Theta_z %*% Sigma_zy)
     psi <- sigma_xy - as.numeric(Sigma_xz %*% Theta_z %*% Sigma_zy)
+    if (any(c(eta_x2, phi2, psi) < 0)) {
+      stop('Estimator implies negative conditional (co)variances. ',
+           'Consider rerunning with another method.')
+    }
     
     # Compute theta as a function of rho 
     theta_fn <- function(rho) {
@@ -246,8 +250,9 @@ leakyIV <- function(
       return(theta)
     }
     
+    # Exact solution for scalar tau
     if (length(tau) == 1) {
-      # Compute norms as a function of rho
+      # Compute gamma norms as a function of rho
       norm_fn <- function(rho) {
         theta <- theta_fn(rho)
         gamma <- as.numeric(Theta_z %*% (Sigma_zy - theta * Sigma_zx))
@@ -276,6 +281,7 @@ leakyIV <- function(
         ATE_lo <- theta_fn(rho_hi)
         ATE_hi <- theta_fn(rho_lo)
       }
+    # Approximate solution for vector tau
     } else {
       # Check criterion
       tmp <- data.table(rho = seq(-0.999, 0.999, length.out = n_rho))
