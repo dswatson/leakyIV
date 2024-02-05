@@ -1,15 +1,17 @@
 #' Bounding Causal Effects with Leaky Instruments
 #' 
-#' This function estimates bounds on average treatment effects in linear IV 
-#' models under limited violations of the exclusion criterion.
+#' Estimates bounds on average treatment effects in linear IV models under 
+#' limited violations of the exclusion criterion.
 #' 
 #' @param x Treatment variable. 
 #' @param y Outcome variable.
 #' @param z One or more leaky instrumental variable(s). 
 #' @param tau Either (a) a scalar representing the upper bound on the p-norm of 
-#'   linear weights from \code{z} to \code{y}; or (b) a vector of length 
+#'   linear weights from \code{z} to \code{y}; (b) a vector of length 
 #'   \code{ncol(z)} representing upper bounds on the absolute value of each such 
-#'   coefficient. See details.
+#'   coefficient; or (c) \code{"adaptive"}, in which case a vector of thresholds
+#'   is computed by taking the absolute value of linear weights from \code{z} to
+#'   \code{x}. See details.
 #' @param p Power of the norm on linear weights from \code{z} to \code{y} (only 
 #'   relevant if \code{tau} is scalar).
 #' @param n_rho Number of rho-values to sweep through in a grid search (only 
@@ -22,7 +24,8 @@
 #'   incompatible with bootstrapping.
 #' @param n_boot Optional number of bootstrap replicates.
 #' @param bayes Use Bayesian bootstrap? 
-#' @param parallel Compute bootstrap estimates in parallel?
+#' @param parallel Compute bootstrap estimates in parallel? Must register 
+#'   backend beforehand, e.g. via \code{doParallel}.
 #' @param ... Extra arguments to be passed to graphical lasso estimator if
 #'   \code{method = "glasso"}. Note that the regularization parameter \code{rho}
 #'   is required as input, with no default. 
@@ -44,12 +47,16 @@
 #' \eqn{Y := Z \gamma + X \theta + \epsilon_Y}. The ATE is given by the 
 #' parameter \eqn{\theta}. Whereas classical IV models require each \eqn{gamma} 
 #' coefficient to be zero, we permit some direct signal from \code{z} to 
-#' \code{y}. Specifically, \code{leakyIV} provides native support for two types 
-#' of information leakage: (a) thresholding the p-norm of linear weights 
+#' \code{y}. Specifically, \code{leakyIV} provides support for two types of
+#' information leakage: (a) thresholding the p-norm of linear weights 
 #' \eqn{gamma} (scalar \code{tau}); and (b) thresholding the absolute value of 
 #' each \eqn{gamma} coefficient one by one (vector \code{tau}). In the latter 
-#' case, we perform a grid search over a range of \code{n_rho} candidate values 
-#' for the correlation coefficient between \eqn{\epsilon_X} and \eqn{\epsilon_Y}, 
+#' case, thresholds can be set internally by using \code{tau = "adaptive"}, in
+#' which case we estimate coefficients \eqn{\beta} in the function from \code{z} 
+#' to \code{x} directly from the covariance matrix and impose the restriction 
+#' that \eqn{\forall j: |\tau_j| \leq |\beta_j|}. For vector-valued \code{tau}, 
+#' we perform a grid search over a range of \code{n_rho} candidate values for 
+#' the correlation coefficient between \eqn{\epsilon_X} and \eqn{\epsilon_Y}, 
 #' recording the min/max ATE consistent with assumptions and data as we vary the 
 #' magnitude and direction of latent confounding.
 #' 
@@ -111,7 +118,7 @@
 #' 
 #' @export 
 #' @import data.table
-#' @importFrom corpcor cov.shrink invcov.shrink
+#' @importFrom corpcor is.positive.definite cov.shrink invcov.shrink
 #' @importFrom glasso glasso
 #' @importFrom foreach foreach %do% %dopar%
 
@@ -146,7 +153,7 @@ leakyIV <- function(
   }
   stopifnot(
     is.numeric(z) || is.matrix(z) || is.data.frame(z),
-    is.numeric(x), is.numeric(y), is.numeric(tau), is.numeric(p), 
+    is.numeric(x), is.numeric(y), is.numeric(p), 
     is.character(method), is.numeric(n_boot), is.logical(bayes), 
     is.logical(parallel)
   )
@@ -156,18 +163,24 @@ leakyIV <- function(
   if (length(y) != n_z) {
     stop('y and z must have the same number of samples.')
   }
-  if (!length(tau) %in% c(1, d_z)) {
-    stop('tau must be either a scalar or a vector of length ncol(z).')
-  }
-  if (any(tau < 0)) {
-    stop('tau must be strictly positive.')
-  }
-  if (length(tau) == 1) {
-    if (p < 0) {
-      stop('p must be >= 0.')
-    } else if (p < 1) {
-      warning('Exact solutions are only possible for p >= 1, using approximate ',
-              'methods instead.')
+  if (is.numeric(tau)) {
+    if (!length(tau) %in% c(1, d_z)) {
+      stop('tau must be either a scalar or a vector of length ncol(z).')
+    }
+    if (any(tau < 0)) {
+      stop('tau must be strictly positive.')
+    }
+    if (length(tau) == 1) {
+      if (p < 0) {
+        stop('p must be >= 0.')
+      } else if (p < 1) {
+        warning('Exact solutions are only possible for p >= 1, using approximate ',
+                'methods instead.')
+      }
+    }
+  } else {
+    if (tau != 'adaptive') {
+      stop('tau not recognized.')
     }
   }
   if (!method %in% c('mle', 'shrink', 'glasso')) {
@@ -177,6 +190,9 @@ leakyIV <- function(
     if (ncol(Sigma) != d_z | nrow(Sigma) != d_z) {
       stop('Pre-computed covariance matrix Sigma must have ncol(z) rows and ', 
            'ncol(z) columns.')
+    }
+    if (!is.positive.definite(Sigma)) {
+      stop('Pre-computed covariance matrix Sigma must be positive definite.')
     }
   }
   dat <- cbind(z, x, y)
@@ -233,12 +249,18 @@ leakyIV <- function(
     var_x <- Sigma[d - 1L, d - 1L]
     var_y <- Sigma[d, d]
     
+    # Optionally compute beta for adaptive tau
+    if (tau == 'adaptive') {
+      beta <- as.numeric(Sigma_xz %*% Theta_z)
+      tau <- abs(beta)
+    }
+    
     # Our magic variables
     eta_x2 <- var_x - as.numeric(Sigma_xz %*% Theta_z %*% Sigma_zx)
     phi2 <- var_y - as.numeric(Sigma_yz %*% Theta_z %*% Sigma_zy)
     psi <- sigma_xy - as.numeric(Sigma_xz %*% Theta_z %*% Sigma_zy)
     if (any(c(eta_x2, phi2, psi) < 0)) {
-      stop('Estimator implies negative conditional (co)variances. ',
+      stop('Covariance estimator implies negative conditional (co)variances. ',
            'Consider rerunning with another method.')
     }
     

@@ -27,9 +27,11 @@ leakyIV(
 \item{z}{One or more leaky instrumental variable(s).}
 
 \item{tau}{Either (a) a scalar representing the upper bound on the p-norm of 
-linear weights from \code{z} to \code{y}; or (b) a vector of length 
+linear weights from \code{z} to \code{y}; (b) a vector of length 
 \code{ncol(z)} representing upper bounds on the absolute value of each such 
-coefficient. See details.}
+coefficient; or (c) \code{"adaptive"}, in which case a vector of thresholds
+is computed by taking the absolute value of linear weights from \code{z} to
+\code{x}. See details.}
 
 \item{p}{Power of the norm on linear weights from \code{z} to \code{y} (only 
 relevant if \code{tau} is scalar).}
@@ -49,7 +51,8 @@ incompatible with bootstrapping.}
 
 \item{bayes}{Use Bayesian bootstrap?}
 
-\item{parallel}{Compute bootstrap estimates in parallel?}
+\item{parallel}{Compute bootstrap estimates in parallel? Must register 
+backend beforehand, e.g. via \code{doParallel}.}
 
 \item{...}{Extra arguments to be passed to graphical lasso estimator if
 \code{method = "glasso"}. Note that the regularization parameter \code{rho}
@@ -62,8 +65,8 @@ causal effect of \code{x} on \code{y}. When bootstrapping, the output data
 frame contains \code{n_boot} rows, one for each bootstrap replicate.
 }
 \description{
-This function estimates bounds on average treatment effects in linear IV 
-models under limited violations of the exclusion criterion.
+Estimates bounds on average treatment effects in linear IV models under 
+limited violations of the exclusion criterion.
 }
 \details{
 Instrumental variables are defined by three structural assumptions: they must
@@ -82,12 +85,16 @@ correlates with the additive noise in the structural equation for \code{y}:
 \eqn{Y := Z \gamma + X \theta + \epsilon_Y}. The ATE is given by the 
 parameter \eqn{\theta}. Whereas classical IV models require each \eqn{gamma} 
 coefficient to be zero, we permit some direct signal from \code{z} to 
-\code{y}. Specifically, \code{leakyIV} provides native support for two types 
-of information leakage: (a) thresholding the p-norm of linear weights 
+\code{y}. Specifically, \code{leakyIV} provides support for two types of
+information leakage: (a) thresholding the p-norm of linear weights 
 \eqn{gamma} (scalar \code{tau}); and (b) thresholding the absolute value of 
 each \eqn{gamma} coefficient one by one (vector \code{tau}). In the latter 
-case, we perform a grid search over a range of \code{n_rho} candidate values 
-for the correlation coefficient between \eqn{\epsilon_X} and \eqn{\epsilon_Y}, 
+case, thresholds can be set internally by using \code{tau = "adaptive"}, in
+which case we estimate coefficients \eqn{\beta} in the function from \code{z} 
+to \code{x} directly from the covariance matrix and impose the restriction 
+that \eqn{\forall j: |\tau_j| \leq |\beta_j|}. For vector-valued \code{tau}, 
+we perform a grid search over a range of \code{n_rho} candidate values for 
+the correlation coefficient between \eqn{\epsilon_X} and \eqn{\epsilon_Y}, 
 recording the min/max ATE consistent with assumptions and data as we vary the 
 magnitude and direction of latent confounding.
 
