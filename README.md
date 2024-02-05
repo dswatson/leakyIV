@@ -1,6 +1,6 @@
 # leakyIV: Bounding Causal Effects with Leaky Instruments
 <p align="center">
-<img src="dag.png" width="350">
+<img src="man/figures/dag.png" width="350">
 </p>
 
 # Introduction
