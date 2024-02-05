@@ -113,7 +113,7 @@
 #' @import data.table
 #' @importFrom corpcor cov.shrink invcov.shrink
 #' @importFrom glasso glasso
-#' @importFrom foreach foreach
+#' @importFrom foreach foreach %do% %dopar%
 
 leakyIV <- function(
     x,
@@ -128,6 +128,9 @@ leakyIV <- function(
     bayes = FALSE, 
     parallel = TRUE, 
     ...) {
+  
+  # To avoid data.table check issues
+  bb <- rho <- sat <- NULL
   
   # Preliminaries
   if (is.matrix(z) || is.data.frame(z)) {
@@ -185,7 +188,7 @@ leakyIV <- function(
   if (n_boot > 0) {
     if (isTRUE(bayes)) {
       # Draw Dirichlet weights
-      w_mat <- matrix(rexp(n * n_boot), ncol = n_boot)
+      w_mat <- matrix(stats::rexp(n * n_boot), ncol = n_boot)
       w_mat <- (w_mat / rowSums(w_mat)) * n
     } else {
       # Draw bootstrap samples
@@ -206,13 +209,13 @@ leakyIV <- function(
         }
       }
       if (method == 'mle') {
-        Sigma <- cov.wt(dat, wt = w)$cov
+        Sigma <- stats::cov.wt(dat, wt = w)$cov
         Theta_z <- solve(Sigma[seq_len(d_z), seq_len(d_z)])
       } else if (method == 'shrink') {
         Sigma <- cov.shrink(dat, w = w, verbose = FALSE)[seq_len(d), seq_len(d)]
         Theta_z <- invcov.shrink(dat, verbose = FALSE)[seq_len(d_z), seq_len(d_z)]
       } else if (method == 'glasso') {
-        s <- glasso(cov.wt(dat, wt = w)$cov, ...)
+        s <- glasso(stats::cov.wt(dat, wt = w)$cov, ...)
         Sigma <- s$w
         Theta_z <- s$wi[seq_len(d_z), seq_len(d_z)]
       }
@@ -259,17 +262,17 @@ leakyIV <- function(
       }
       # Find the split point: upper and lower bounds lie on either side of
       # rho_star, assuming tau > min_norm$value
-      min_norm <- optim(0, norm_fn, method = 'Brent', lower = -1, upper = 1)
+      min_norm <- stats::optim(0, norm_fn, method = 'Brent', lower = -1, upper = 1)
       if (tau < min_norm$value) {
         warning('tau is too low, resulting in an empty feasible region. ',
                 'Consider rerunning with a higher threshold.')
         ATE_lo <- ATE_hi <- NA_real_
       } else {
         rho_star <- min_norm$par
-        rho_lo <- optim(mean(c(-1, rho_star)), loss_fn, method = 'Brent', 
-                        lower = -1, upper = rho_star)$par
-        rho_hi <- optim(mean(c(rho_star, 1)), loss_fn, method = 'Brent', 
-                        lower = rho_star, upper = 1)$par
+        rho_lo <- stats::optim(mean(c(-1, rho_star)), loss_fn, method = 'Brent', 
+                               lower = -1, upper = rho_star)$par
+        rho_hi <- stats::optim(mean(c(rho_star, 1)), loss_fn, method = 'Brent', 
+                               lower = rho_star, upper = 1)$par
         ATE_lo <- theta_fn(rho_hi)
         ATE_hi <- theta_fn(rho_lo)
       }
