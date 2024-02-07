@@ -9,13 +9,9 @@
 #' @param tau Either (a) a scalar representing the upper bound on the p-norm of 
 #'   linear weights from \code{z} to \code{y}; (b) a vector of length 
 #'   \code{ncol(z)} representing upper bounds on the absolute value of each such 
-#'   coefficient; or (c) \code{"adaptive"}, in which case a vector of thresholds
-#'   is computed by taking the absolute value of linear weights from \code{z} to
-#'   \code{x}. See details.
+#'   coefficient. See details.
 #' @param p Power of the norm on linear weights from \code{z} to \code{y} (only 
 #'   relevant if \code{tau} is scalar).
-#' @param n_rho Number of rho-values to sweep through in a grid search (only 
-#'   relevant if \code{tau} is a vector).
 #' @param method Estimator for the covariance matrix. Options include 
 #'   (a) \code{"mle"}, the default; (b) \code{"shrink"}, an analytic empirical 
 #'   Bayes solution; or (c) \code{"glasso"}, the graphical lasso. See details.
@@ -50,15 +46,7 @@
 #' \code{y}. Specifically, \code{leakyIV} provides support for two types of
 #' information leakage: (a) thresholding the p-norm of linear weights 
 #' \eqn{gamma} (scalar \code{tau}); and (b) thresholding the absolute value of 
-#' each \eqn{gamma} coefficient one by one (vector \code{tau}). In the latter 
-#' case, thresholds can be set internally by using \code{tau = "adaptive"}, in
-#' which case we estimate coefficients \eqn{\beta} in the function from \code{z} 
-#' to \code{x} directly from the covariance matrix and impose the restriction 
-#' that \eqn{\forall j: |\tau_j| \leq |\beta_j|}. For vector-valued \code{tau}, 
-#' we perform a grid search over a range of \code{n_rho} candidate values for 
-#' the correlation coefficient between \eqn{\epsilon_X} and \eqn{\epsilon_Y}, 
-#' recording the min/max ATE consistent with assumptions and data as we vary the 
-#' magnitude and direction of latent confounding.
+#' each \eqn{gamma} coefficient one by one (vector \code{tau}). 
 #' 
 #' Numerous methods exist for estimating covariance matrices. \code{leakyIV}
 #' provides support for maximum likelihood estimation (the default), as well as
@@ -102,9 +90,10 @@
 #' beta <- rep(1, d_z)
 #' gamma <- rep(0.1, d_z)
 #' theta <- 2
+#' rho <- 0.5
 #' 
 #' # Simulate correlated residuals
-#' S_eps <- matrix(c(1, 0.5, 0.5, 1), ncol = 2)
+#' S_eps <- matrix(c(1, rho, rho, 1), ncol = 2)
 #' eps <- matrix(rnorm(n * 2), ncol = 2)
 #' eps <- eps %*% chol(S_eps)
 #' 
@@ -128,7 +117,6 @@ leakyIV <- function(
     z,
     tau, 
     p = 2, 
-    n_rho = 1999L,
     method = "mle",
     Sigma = NULL,
     n_boot = NULL, 
@@ -139,7 +127,7 @@ leakyIV <- function(
   # To avoid data.table check issues
   bb <- rho <- sat <- NULL
   
-  # Preliminaries
+  # Checks, warnings
   if (is.matrix(z) || is.data.frame(z)) {
     n_z <- nrow(z)
     d_z <- ncol(z)
@@ -153,7 +141,7 @@ leakyIV <- function(
   }
   stopifnot(
     is.numeric(z) || is.matrix(z) || is.data.frame(z),
-    is.numeric(x), is.numeric(y), is.numeric(p), 
+    is.numeric(x), is.numeric(y), is.numeric(tau), is.numeric(p), 
     is.character(method), is.numeric(n_boot), is.logical(bayes), 
     is.logical(parallel)
   )
@@ -163,24 +151,18 @@ leakyIV <- function(
   if (length(y) != n_z) {
     stop('y and z must have the same number of samples.')
   }
-  if (is.numeric(tau)) {
-    if (!length(tau) %in% c(1, d_z)) {
-      stop('tau must be either a scalar or a vector of length ncol(z).')
-    }
-    if (any(tau < 0)) {
-      stop('tau must be strictly positive.')
-    }
-    if (length(tau) == 1) {
-      if (p < 0) {
-        stop('p must be >= 0.')
-      } else if (p < 1) {
-        warning('Exact solutions are only possible for p >= 1, using approximate ',
-                'methods instead.')
-      }
-    }
-  } else {
-    if (tau != 'adaptive') {
-      stop('tau not recognized.')
+  if (!length(tau) %in% c(1, d_z)) {
+    stop('tau must be either a scalar or a vector of length ncol(z).')
+  }
+  if (any(tau < 0)) {
+    stop('tau must be strictly positive.')
+  }
+  if (length(tau) == 1L) {
+    if (p < 0) {
+      stop('p must be >= 0.')
+    } else if (p < 1) {
+      warning('Exact solutions are only possible for p >= 1, using approximate ',
+              'methods instead.')
     }
   }
   if (!method %in% c('mle', 'shrink', 'glasso')) {
@@ -195,13 +177,30 @@ leakyIV <- function(
       stop('Pre-computed covariance matrix Sigma must be positive definite.')
     }
   }
+  
+  # Preliminaries
+  d <- d_z + 2L
+  if (length(tau) > 1L) {
+    z <- z / tau
+    if (!is.null(Sigma)) {
+      tau <- c(tau, 1L, 1L)
+      t_matrix <- matrix(nrow = d, ncol = d)
+      diag(t_matrix) <- 1 / tau^2
+      for (i in 2:d) {
+        for (j in 1:(i - 1L)) {
+          t_matrix[i, j] <- t_matrix[j, i] <- 1 / (tau[i] * tau[j])
+        }
+      }
+      Sigma <- t_matrix * Sigma
+    }
+    tau <- 1L
+  }
   dat <- cbind(z, x, y)
   n <- nrow(dat)
-  d <- ncol(dat)
-  w <- rep(1, n)
+  w <- rep(1L, n)
   
   # Bootstrap samples or weights
-  if (n_boot > 0) {
+  if (n_boot > 0L) {
     if (isTRUE(bayes)) {
       # Draw Dirichlet weights
       w_mat <- matrix(stats::rexp(n * n_boot), ncol = n_boot)
@@ -217,7 +216,7 @@ leakyIV <- function(
     
     # Estimate covariance and precision matrices
     if (is.null(Sigma)) {
-      if (b > 0) {
+      if (b > 0L) {
         if (isTRUE(bayes)) {
           w <- w_mat[, b]
         } else {
@@ -249,12 +248,6 @@ leakyIV <- function(
     var_x <- Sigma[d - 1L, d - 1L]
     var_y <- Sigma[d, d]
     
-    # Optionally compute beta for adaptive tau
-    if (tau == 'adaptive') {
-      beta <- as.numeric(Sigma_xz %*% Theta_z)
-      tau <- abs(beta)
-    }
-    
     # Our magic variables
     eta_x2 <- var_x - as.numeric(Sigma_xz %*% Theta_z %*% Sigma_zx)
     phi2 <- var_y - as.numeric(Sigma_yz %*% Theta_z %*% Sigma_zy)
@@ -271,61 +264,35 @@ leakyIV <- function(
         (-eta_x2 * (1 - 1/rho^2))
       return(theta)
     }
+    # Compute gamma norms as a function of rho
+    norm_fn <- function(rho) {
+      theta <- theta_fn(rho)
+      gamma <- as.numeric(Theta_z %*% (Sigma_zy - theta * Sigma_zx))
+      norm <- (sum(abs(gamma)^p))^(1 / p)
+      return(norm)
+    }
+    # Compute loss as a function of rho
+    loss_fn <- function(rho) {
+      norm <- norm_fn(rho)
+      loss <- (tau - norm)^2
+      return(loss)
+    }
     
-    # Exact solution for scalar tau
-    if (length(tau) == 1) {
-      # Compute gamma norms as a function of rho
-      norm_fn <- function(rho) {
-        theta <- theta_fn(rho)
-        gamma <- as.numeric(Theta_z %*% (Sigma_zy - theta * Sigma_zx))
-        norm <- (sum(abs(gamma)^p))^(1 / p)
-        return(norm)
-      }
-      # Compute loss as a function of rho
-      loss_fn <- function(rho) {
-        norm <- norm_fn(rho)
-        loss <- (tau - norm)^2
-        return(loss)
-      }
-      # Find the split point: upper and lower bounds lie on either side of
-      # rho_star, assuming tau > min_norm$value
-      min_norm <- stats::optim(0, norm_fn, method = 'Brent', lower = -1, upper = 1)
-      if (tau < min_norm$value) {
-        warning('tau is too low, resulting in an empty feasible region. ',
-                'Consider rerunning with a higher threshold.')
-        ATE_lo <- ATE_hi <- NA_real_
-      } else {
-        rho_star <- min_norm$par
-        rho_lo <- stats::optim(mean(c(-1, rho_star)), loss_fn, method = 'Brent', 
-                               lower = -1, upper = rho_star)$par
-        rho_hi <- stats::optim(mean(c(rho_star, 1)), loss_fn, method = 'Brent', 
-                               lower = rho_star, upper = 1)$par
-        ATE_lo <- theta_fn(rho_hi)
-        ATE_hi <- theta_fn(rho_lo)
-      }
-    # Approximate solution for vector tau
+    # Find the split point: upper and lower bounds lie on either side of
+    # rho_star, assuming tau > min_norm$value
+    min_norm <- stats::optim(0, norm_fn, method = 'Brent', lower = -1, upper = 1)
+    if (tau < min_norm$value) {
+      warning('tau is too low, resulting in an empty feasible region. ',
+              'Consider rerunning with a higher threshold.')
+      ATE_lo <- ATE_hi <- NA_real_
     } else {
-      # Check criterion
-      tmp <- data.table(rho = seq(-0.999, 0.999, length.out = n_rho))
-      tmp <- tmp[rho != 0]
-      tmp[, sat := sapply(rho, function(r) {
-        theta <- theta_fn(r)
-        gamma <- as.numeric(Theta_z %*% (Sigma_zy - theta * Sigma_zx))
-        out <- all(abs(gamma) <= tau)
-        return(out)
-      })]
-      if (tmp[, sum(sat)] == 0) {
-        warning('tau is too restrictive, resulting in an empty feasible region. ',
-                'Consider rerunning with different thresholds.')
-        ATE_lo <- ATE_hi <- NA_real_
-      } else if (tmp[, sum(sat)] == 1) {
-        ATE_lo <- ATE_hi <- tmp[sat == TRUE, rho]
-      } else {
-        rho_lo <- tmp[sat == TRUE, min(rho)]
-        rho_hi <- tmp[sat == TRUE, max(rho)]
-        ATE_lo <- theta_fn(rho_hi)
-        ATE_hi <- theta_fn(rho_lo)
-      }
+      rho_star <- min_norm$par
+      rho_lo <- stats::optim(mean(c(-1, rho_star)), loss_fn, method = 'Brent', 
+                             lower = -1, upper = rho_star)$par
+      rho_hi <- stats::optim(mean(c(rho_star, 1)), loss_fn, method = 'Brent', 
+                             lower = rho_star, upper = 1)$par
+      ATE_lo <- theta_fn(rho_hi)
+      ATE_hi <- theta_fn(rho_lo)
     }
     
     # Export

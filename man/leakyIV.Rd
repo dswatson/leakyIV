@@ -10,7 +10,6 @@ leakyIV(
   z,
   tau,
   p = 2,
-  n_rho = 1999L,
   method = "mle",
   Sigma = NULL,
   n_boot = NULL,
@@ -29,15 +28,10 @@ leakyIV(
 \item{tau}{Either (a) a scalar representing the upper bound on the p-norm of 
 linear weights from \code{z} to \code{y}; (b) a vector of length 
 \code{ncol(z)} representing upper bounds on the absolute value of each such 
-coefficient; or (c) \code{"adaptive"}, in which case a vector of thresholds
-is computed by taking the absolute value of linear weights from \code{z} to
-\code{x}. See details.}
+coefficient. See details.}
 
 \item{p}{Power of the norm on linear weights from \code{z} to \code{y} (only 
 relevant if \code{tau} is scalar).}
-
-\item{n_rho}{Number of rho-values to sweep through in a grid search (only 
-relevant if \code{tau} is a vector).}
 
 \item{method}{Estimator for the covariance matrix. Options include 
 (a) \code{"mle"}, the default; (b) \code{"shrink"}, an analytic empirical 
@@ -88,15 +82,7 @@ coefficient to be zero, we permit some direct signal from \code{z} to
 \code{y}. Specifically, \code{leakyIV} provides support for two types of
 information leakage: (a) thresholding the p-norm of linear weights 
 \eqn{gamma} (scalar \code{tau}); and (b) thresholding the absolute value of 
-each \eqn{gamma} coefficient one by one (vector \code{tau}). In the latter 
-case, thresholds can be set internally by using \code{tau = "adaptive"}, in
-which case we estimate coefficients \eqn{\beta} in the function from \code{z} 
-to \code{x} directly from the covariance matrix and impose the restriction 
-that \eqn{\forall j: |\tau_j| \leq |\beta_j|}. For vector-valued \code{tau}, 
-we perform a grid search over a range of \code{n_rho} candidate values for 
-the correlation coefficient between \eqn{\epsilon_X} and \eqn{\epsilon_Y}, 
-recording the min/max ATE consistent with assumptions and data as we vary the 
-magnitude and direction of latent confounding.
+each \eqn{gamma} coefficient one by one (vector \code{tau}). 
 
 Numerous methods exist for estimating covariance matrices. \code{leakyIV}
 provides support for maximum likelihood estimation (the default), as well as
@@ -124,9 +110,10 @@ d_z <- 5
 beta <- rep(1, d_z)
 gamma <- rep(0.1, d_z)
 theta <- 2
+rho <- 0.5
 
 # Simulate correlated residuals
-S_eps <- matrix(c(1, 0.5, 0.5, 1), ncol = 2)
+S_eps <- matrix(c(1, rho, rho, 1), ncol = 2)
 eps <- matrix(rnorm(n * 2), ncol = 2)
 eps <- eps \%*\% chol(S_eps)
 
