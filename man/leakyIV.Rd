@@ -77,12 +77,12 @@ We assume the following structural equation for \code{x}:
 \eqn{X := Z \beta + \epsilon_X}, where the final summand is a noise term that
 correlates with the additive noise in the structural equation for \code{y}: 
 \eqn{Y := Z \gamma + X \theta + \epsilon_Y}. The ATE is given by the 
-parameter \eqn{\theta}. Whereas classical IV models require each \eqn{gamma} 
+parameter \eqn{\theta}. Whereas classical IV models require each \eqn{\gamma} 
 coefficient to be zero, we permit some direct signal from \code{z} to 
 \code{y}. Specifically, \code{leakyIV} provides support for two types of
 information leakage: (a) thresholding the p-norm of linear weights 
-\eqn{gamma} (scalar \code{tau}); and (b) thresholding the absolute value of 
-each \eqn{gamma} coefficient one by one (vector \code{tau}). 
+\eqn{\gamma} (scalar \code{tau}); and (b) thresholding the absolute value of 
+each \eqn{\gamma} coefficient one by one (vector \code{tau}). 
 
 Numerous methods exist for estimating covariance matrices. \code{leakyIV}
 provides support for maximum likelihood estimation (the default), as well as
