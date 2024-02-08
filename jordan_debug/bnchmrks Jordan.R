@@ -1,7 +1,13 @@
 # Set working directory
 setwd('C:/Users/k23067841/Downloads/LeakyIV simulations again')
 
+
+install.packages("reshape2")
+
+devtools::install_github('dswatson/leakyIV')
+
 # Load libraries, register cores
+library(reshape2)
 library(data.table)
 library(broom)
 library(sisVIVE)
@@ -20,7 +26,7 @@ source('MBE.R')
 set.seed(123, kind = "L'Ecuyer-CMRG")
 
 # Import sim_idx
-sim_idx <- fread('./grid2_largeB/sim_idx.csv')
+sim_idx <- fread('./sisVIVE test 2/sim_idx.csv')
 
 # Benchmark against sisVIVE and 2SLS:
 bnchmrk <- function(sim_idx, sub_idx) {
@@ -29,12 +35,12 @@ bnchmrk <- function(sim_idx, sub_idx) {
   source("leakyIV.R")
   
   # Read the data
-  dat <- data.table::fread(paste0('./grid2largeB/', sim_idx, '.csv'))
+  dat <- data.table::fread(paste0('./sisVIVE test 2/', sim_idx, '.csv'))
   
   d_z <- (ncol(dat) - 3)/2
   
   # Subset the data
-  tmp_with_gamma_theta <- dat[sub_idx:(sub_idx + 9999)]
+  tmp_with_gamma_theta <- dat[sub_idx:(sub_idx + 4999)]
   tmp <- dplyr::select(tmp_with_gamma_theta, 1:(d_z+2))
   theta <- dplyr::select(tmp_with_gamma_theta, (d_z+3))
   gamma <- dplyr::select(tmp_with_gamma_theta, -(1:(d_z+3)))
@@ -91,73 +97,61 @@ bnchmrk <- function(sim_idx, sub_idx) {
   
   #print(z_dat)
   
-  tau_l2 <- LambertW::lp_norm(as.numeric(gamma[1]), 2)
+  known_theta <- as.numeric(theta[sim_idx])
+  print(known_theta)
   
-  leaky_ace_0 = leakyIV(x_dat, y_dat, z_dat, tau_l2)
   
-  leaky_ace_0_lo = dplyr::select(leaky_ace_0, 1)
-  leaky_ace_0_hi = dplyr::select(leaky_ace_0, 2)
+  norm_l2 <- LambertW::lp_norm(as.numeric(gamma[1]), 2)
   
-  leaky_ace_1 = leakyIV(x_dat, y_dat, z_dat, 1.01*tau_l2)
+  leaky_ace = leakyIV(x_dat, y_dat, z_dat, norm_l2)
   
-  leaky_ace_1_lo = dplyr::select(leaky_ace_1, 1)
-  leaky_ace_1_hi = dplyr::select(leaky_ace_1, 2)
+  leaky_ace_lo = as.numeric(dplyr::select(leaky_ace, 1))
+  leaky_ace_hi = as.numeric(dplyr::select(leaky_ace, 2))
   
-  leaky_ace_2 = leakyIV(x_dat, y_dat, z_dat, 1.1*tau_l2)
-  
-  leaky_ace_2_lo = dplyr::select(leaky_ace_2, 1)
-  leaky_ace_2_hi = dplyr::select(leaky_ace_2, 2)
-  
-  leaky_ace_3 = leakyIV(x_dat, y_dat, z_dat, 2*tau_l2)
-  
-  leaky_ace_3_lo = dplyr::select(leaky_ace_3, 1)
-  leaky_ace_3_hi = dplyr::select(leaky_ace_3, 2)
-  
-  leaky_ace_4 = leakyIV(x_dat, y_dat, z_dat, 5*tau_l2)
-  
-  leaky_ace_4_lo = dplyr::select(leaky_ace_4, 1)
-  leaky_ace_4_hi = dplyr::select(leaky_ace_4, 2)
-  
-  leaky_ace_5 = leakyIV(x_dat, y_dat, z_dat, 10*tau_l2)
-  
-  leaky_ace_5_lo = dplyr::select(leaky_ace_5, 1)
-  leaky_ace_5_hi = dplyr::select(leaky_ace_5, 2)
-  
-  leaky_ace_6 = leakyIV(x_dat, y_dat, z_dat, 10*tau_l2)
-  
-  leaky_ace_6_lo = dplyr::select(leaky_ace_6, 1)
-  leaky_ace_6_hi = dplyr::select(leaky_ace_6, 2)
+  # Export
+  out <- data.table(
+    sim_idx = sim_idx, sub_idx = sub_idx, norm_gamma = norm_l2, tau_div_norm = 1, norm = 'L2', regularization = 'none (MLE)', 
+    theta_true = known_theta,
+    'TSLS' = ace_2sls, 'sisVIVE' = ace_sisVIVE, 'MBE' = ace_mbe,
+    ATE_lo = leaky_ace_lo, ATE_hi = leaky_ace_hi
+  )
   
   print(paste0('sim_idx: ', toString(sim_idx), '  sub_idx: ', toString(sub_idx)))
   
-  # Export
-  out <- data.frame(
-    sim_idx = sim_idx, sub_idx = sub_idx, 
-    'TSLS' = ace_2sls, 'sisVIVE' = ace_sisVIVE, 'MBE' = ace_mbe,
-    'D is 0 low' = leaky_ace_0_lo, 'D is 0 high' = leaky_ace_0_hi,
-    'D is 0.01 low' = leaky_ace_1_lo, 'D is 0.01 high' = leaky_ace_1_hi,
-    'D is 0.1 low' = leaky_ace_2_lo, 'D is 0.1 high' = leaky_ace_2_hi,
-    'D is 1 low' = leaky_ace_3_lo, 'D is 1 high' = leaky_ace_3_hi,
-    'D is 4 low' = leaky_ace_4_lo, 'D is 4 high' = leaky_ace_4_hi,
-    'D is 9 low' = leaky_ace_5_lo, 'D is 9 high' = leaky_ace_5_hi,
-    'D is 99 low' = leaky_ace_6_lo, 'D is 99 high' = leaky_ace_6_hi
-    )
+  # tau = d ||gamma||_2
+  
+  for(d in c(1.01, 1.1, 2, 5, 10, 100)){
+    
+    tau_l2 <- d*norm_l2
+    
+    leaky_ace = leakyIV(x_dat, y_dat, z_dat, tau_l2)
+    
+    leaky_ace_lo = as.numeric(dplyr::select(leaky_ace, 1))
+    leaky_ace_hi = as.numeric(dplyr::select(leaky_ace, 2))
+    
+    out <- rbind(out, list(sim_idx, sub_idx, norm_l2,  d, 'L2', 'none (MLE)',
+                           known_theta, ace_2sls, ace_sisVIVE, ace_mbe,
+                           leaky_ace_lo, leaky_ace_hi))
+    
+  }
+  
+  
   return(out)
 }
 
-bnchmrk(1, 20001)
+bnchmrk(1, 2001)
 
 # Execute in parallel
-res <- foreach(aa = seq_len(72), .combine = rbind, .packages = c("data.table", "broom", "sisVIVE", 
-                                                                "tidyverse", "ggsci", "LambertW")) %:%
-  foreach(bb = seq(1, 90001, 10000), .combine = rbind) %dopar%
+res <- foreach(aa = seq_len(42), .combine = rbind, .packages = c("data.table", "broom", "sisVIVE", 
+                                                                "tidyverse", "ggsci", "LambertW", "reshape2", "tidyr")) %:%
+  foreach(bb = seq(1, 45001, 5000), .combine = rbind) %dopar%
   #prev_time <- Sys.time()
   #curr_time <- Sys.time()
   bnchmrk(aa, bb)
 
 print(res)
 
-fwrite(res, './grid2largeB/results.csv')
+fwrite(res, './sisVIVE test 2/results.csv')
 
 # Plot results
 df <- res %>%
