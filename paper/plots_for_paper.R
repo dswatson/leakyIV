@@ -237,6 +237,43 @@ outer_loop <- function(d_z, tau_fctr, n = 2000, n_sim = 200) {
 
 ################################################################################
 
+# Hold d_z fixed at 5 and run across different tau thresholds
+df <- foreach(tt = seq(0.1, 2, by = 0.1), .combine = rbind) %dopar% outer_loop(5, tt)
+
+# Compute means, standard errors
+df[, sum(is.na(theta)), by = tau_fctr]
+df <- na.omit(df)
+mu <- df[b > 0, mean(theta), by = .(tau_fctr, Bound)]
+setnames(mu, 'V1', 'mu')
+se <- df[b > 0, sd(theta), by = .(tau_fctr, Bound)]
+setnames(se, 'V1', 'se')
+tmp <- merge(mu, se, by = c('tau_fctr', 'Bound'))
+tmp[, Bound := factor(Bound, levels = c('Upper', 'Lower'))]
+setnames(df, 'theta', 'mu')
+tmp[, obs := 1]
+true <- df[b==0 & tau_fctr >= 1, .(tau_fctr, Bound, mu)][, se := NA_real_][, obs := 0]
+tmp <- rbind(tmp, true)
+
+
+# Plot number of candidate instruments against ATE bounds
+p1 <- ggplot() + 
+  geom_vline(xintercept = 1, linetype = 'dashed', linewidth = 1) +
+  geom_hline(yintercept = 1, linewidth = 1, color = 'grey60') +
+  geom_ribbon(tmp[obs == 1], 
+              mapping = aes(tau_fctr, mu, ymin = mu - se, ymax = mu + se,
+                            fill = Bound), alpha = 0.4) + 
+  geom_line(tmp[obs == 1], mapping = aes(tau_fctr, mu, color = Bound)) + 
+  scale_fill_npg() + 
+  scale_color_npg() +
+  geom_point(tmp[obs == 0], mapping = aes(tau_fctr, mu, color = Bound), 
+             shape = 18, size = 5) + 
+  labs(x = expression(paste('Leakage threshold ', tau)),
+       y = expression(paste('Average Treatment Effect ', theta))) +
+  theme_bw() + 
+  theme(axis.title = element_text(size = 24),
+        legend.text = element_text(size = 24),
+        legend.position = 'bottom')
+
 # Hold tau_fctr fixed at 1.5 and run across different values of d_z
 df <- foreach(dd = 2:20, .combine = rbind) %dopar% outer_loop(dd, 1.5)
 
@@ -255,7 +292,8 @@ true <- df[b==0, .(d_z, Bound, mu)][, se := NA_real_][, obs := 0]
 tmp <- rbind(tmp, true)
 
 # Plot number of candidate instruments against ATE bounds
-p1 <- ggplot() + 
+p2 <- ggplot() + 
+  geom_hline(yintercept = 1, linewidth = 1, color = 'grey60') +
   geom_ribbon(tmp[obs == 1], 
               mapping = aes(d_z, mu, ymin = mu - se, ymax = mu + se,
                             fill = Bound), alpha = 0.4) + 
@@ -264,6 +302,7 @@ p1 <- ggplot() +
   scale_color_npg() +
   geom_point(tmp[obs == 0], mapping = aes(d_z, mu, color = Bound), 
              shape = 18, size = 5) + 
+  geom_hline(yintercept = 1, linewidth = 1, color = 'grey60') +
   labs(x = expression(paste('Number of Candidate Instruments ', d[Z])),
        y = expression(paste('Average Treatment Effect ', theta))) +
   theme_bw() + 
@@ -273,44 +312,8 @@ p1 <- ggplot() +
 
 ################################################################################
 
-# Now hold d_z fixed at 5 and run across different tau thresholds
-df <- foreach(tt = seq(1.5, 10, by = 0.5), .combine = rbind) %dopar% outer_loop(5, tt)
-
-# Compute means, standard errors
-df[, sum(is.na(theta)), by = tau_fctr]
-df <- na.omit(df)
-mu <- df[b > 0, mean(theta), by = .(tau_fctr, Bound)]
-setnames(mu, 'V1', 'mu')
-se <- df[b > 0, sd(theta), by = .(tau_fctr, Bound)]
-setnames(se, 'V1', 'se')
-tmp <- merge(mu, se, by = c('tau_fctr', 'Bound'))
-tmp[, Bound := factor(Bound, levels = c('Upper', 'Lower'))]
-setnames(df, 'theta', 'mu')
-tmp[, obs := 1]
-true <- df[b==0 & tau_fctr >= 2.5, .(tau_fctr, Bound, mu)][, se := NA_real_][, obs := 0]
-tmp <- rbind(tmp, true)
-
-
-# Plot number of candidate instruments against ATE bounds
-p2 <- ggplot() + 
-  geom_ribbon(tmp[obs == 1], 
-              mapping = aes(tau_fctr, mu, ymin = mu - se, ymax = mu + se,
-                            fill = Bound), alpha = 0.4) + 
-  geom_line(tmp[obs == 1], mapping = aes(tau_fctr, mu, color = Bound)) + 
-  scale_fill_npg() + 
-  scale_color_npg() +
-  geom_point(tmp[obs == 0], mapping = aes(tau_fctr, mu, color = Bound), 
-             shape = 18, size = 5) + 
-  geom_vline(xintercept = 2.5, linetype = 'dashed', linewidth = 1) +
-  labs(x = expression(paste('Leakage threshold ', tau)),
-       y = expression(paste('Average Treatment Effect ', theta))) +
-  theme_bw() + 
-  theme(axis.title = element_text(size = 24),
-        legend.text = element_text(size = 24),
-        legend.position = 'bottom')
-
 # Save both as a grid
-plot_grid(p2, p1, labels = c('A', 'B'), label_size = 24)
+plot_grid(p1, p2, labels = c('A', 'B'), label_size = 24)
 ggsave2('./plots/Dz_and_tau_vs_ate.pdf', height = 7, width = 14)
 
 
