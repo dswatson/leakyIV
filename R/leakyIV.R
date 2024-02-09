@@ -239,7 +239,6 @@ leakyIV <- function(
     }
     
     # Extract other covariance parameters
-    Sigma_z <- Sigma[seq_len(d_z), seq_len(d_z)]
     Sigma_zy <- matrix(Sigma[seq_len(d_z), d], ncol = 1L)
     Sigma_yz <- t(Sigma_zy)
     Sigma_zx <- matrix(Sigma[seq_len(d_z), d - 1L], ncol = 1L)
