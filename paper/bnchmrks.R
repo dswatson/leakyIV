@@ -1,162 +1,102 @@
 # Set working directory
-setwd('~/Documents/UCL/soft_instruments')
+setwd('~/Documents/Kings/leakyIV/paper')
 
 # Load libraries, register cores
 library(data.table)
 library(broom)
 library(sisVIVE)
-library(tidyverse)
-library(ggsci)
+library(leakyIV)
 library(doMC)
 registerDoMC(8)
 
-# Load MBE script
+# Load scripts
+source('bayesian_baseline.R')
 source('MBE.R')
+source('simulator.R')
+
 
 # Set seed
 set.seed(123, kind = "L'Ecuyer-CMRG")
 
-# Import sim_idx
-sim_idx <- fread('./simulations/sim_idx.csv')
-
-# Benchmark against sisVIVE and 2SLS:
-bnchmrk <- function(sim_idx, sub_idx) {
-  # Read the data
-  dat <- fread(paste0('./simulations/sim', sim_idx, '.csv'))
-  # Subset the data
-  tmp <- dat[sub_idx:(sub_idx + 999)]
-  # Run 2SLS
-  f0 <- lm(x ~ ., data = select(tmp, -y))
-  tmp$x_hat <- fitted(f0)
-  f1 <- lm(y ~ x_hat, data = tmp)
-  ace_2sls <- tidy(f1)$estimate[2]
-  # Run sisVIVE
-  sisvive <- cv.sisVIVE(tmp$y, tmp$x, as.matrix(select(tmp, starts_with('z'))))
-  ace_sisVIVE <- sisvive$beta
-  # Run MBE
-  beta_hat <- tidy(f0)$estimate[2:9]
-  se_beta <- tidy(f0)$std.error[2:9]
-  f2 <- lm(y ~ ., data = select(tmp, -x_hat))
-  gamma_hat <- tidy(f2)$estimate[2:9]
-  se_gamma <- tidy(f2)$std.error[2:9]
-  mbe <- MBE(beta_hat, gamma_hat, se_beta, se_gamma, phi = 1, n_boot = 1)
-  ace_mbe <- mbe$Estimate[2]
+# Benchmark against 2SLS, sisVIVE, MBE, and Bayes:
+bnchmrk <- function(z_rho, rho, pr_valid, n = 1000, n_sim = 100) {
+  
+  # Generate data, extract "population" data
+  if (z_rho != 0) {
+    z_rho <- z_rho * sample(c(1, -1), 1)
+  }
+  rho <- rho * sample(c(1, -1), 1)
+  sim <- sim_dat(n = 1e5, d_z = 20, z_cnt = TRUE, z_rho, rho, 
+                 theta = 1, r2_x = 3/4, r2_y = 3/4, pr_valid)
+  d_z <- 20
+  d <- d_z + 2
+  l2 <- sqrt(sum(sim$params$gamma^2))
+  tau <- 1.25 * l2
+  
+  # Inner loop
+  inner_loop <- function(b) {
+    
+    # Draw data
+    tmp <- sim$dat[sample(1e5, n), ]
+    
+    # Run 2SLS
+    f0 <- lm(x ~ ., data = tmp[, -c('y')])
+    tmp[, x_hat := fitted(f0)]
+    f1 <- lm(y ~ x_hat, data = tmp)
+    ate_2sls <- as.numeric(tidy(f1)$estimate[2])
+    
+    # Run sisVIVE
+    sisvive <- cv.sisVIVE(tmp$y, tmp$x, as.matrix(tmp[, -c('x', 'y')]))
+    ate_sisvive <- sisvive$beta
+    
+    # Run MBE
+    beta_hat <- as.numeric(tidy(f0)$estimate[2:(d_z + 1)])
+    se_beta <- as.numeric(tidy(f0)$std.error[2:(d_z + 1)])
+    f2 <- lm(y ~ ., data = tmp[, -c('x_hat')])
+    gamma_hat <- tidy(f2)$estimate[2:(d_z + 1)]
+    se_gamma <- tidy(f2)$std.error[2:(d_z + 1)]
+    mbe <- MBE(beta_hat, gamma_hat, se_beta, se_gamma, phi = 1, n_boot = 1)
+    ate_mbe <- mbe$Estimate[2]
+    
+    # Bayesian baseline
+    bb_res <- baseline_gaussian_sample(
+      m = 2000, dat = as.matrix(tmp), pos_z = 1:d_z, pos_x = d_z + 1, 
+      pos_y = d_z + 1, prop_var = 0.01, lvar_z_mu = -1, lvar_z_var = 3,
+      beta_var = 5, pre_gamma_var = 1, theta_var = 5, lvar_error_mu = -1,
+      lvar_error_var = 1, tau = tau, alpha = 0.05
+    )
+    ate_bb <- mean(bb_res$theta)
+    ate_lo_bb <- bb_res$lb_interval[2]
+    ate_hi_bb <- bb_res$ub_interval[1]
+    
+    # LeakyIV
+    suppressWarnings(
+      ate_bnds <- leakyIV(tmp$x, tmp$y, tmp[, -c('x', 'y')], tau = tau,
+                          method = 'glasso', rho = 0.005)
+    )
+    ate_lo <- ate_bnds$ATE_lo
+    ate_hi <- ate_bnds$ATE_hi
+    
+    # Export
+    out <- data.table(b,
+      method = c('TSLS', 'sisVIVE', 'MBE', 'Lower', 'Upper'),
+      theta = c(ate_2sls, ate_sisvive, ate_mbe, ate_lo, ate_hi)
+    )
+    return(out)
+  }
+  out <- foreach(bb = seq_len(n_sim), .combine = rbind) %do% inner_loop(bb)
+  
   # Export
-  out <- data.frame(
-    sim_idx = sim_idx, sub_idx = sub_idx, 
-    'TSLS' = ace_2sls, 'sisVIVE' = ace_sisVIVE, 'MBE' = ace_mbe
-  )
+  out[, z_rho := z_rho][, rho := rho][, pr_valid := pr_valid]
   return(out)
+  
 }
 
 # Execute in parallel
-res <- foreach(aa = seq_len(24), .combine = rbind) %:%
-  foreach(bb = seq(1, 9001, 1000), .combine = rbind) %dopar%
-  bnchmrk(aa, bb)
-
-# Plot results
-df <- res %>%
-  select(-sub_idx) %>%
-  rename(idx = sim_idx) %>%
-  pivot_longer(TSLS:MBE, names_to = 'Method', values_to = 'alpha') %>%
-  inner_join(sim_idx, by = 'idx')
-
-
-df %>%
-  filter(z_rho == 0) %>%
-  ggplot(aes(Method, alpha, color = Method)) + 
-  geom_jitter(size = 0.75) + 
-  geom_boxplot() + 
-  scale_color_d3() + 
-  geom_hline(yintercept = 1, color = 'red', linetype = 'dashed') + 
-  theme_bw() + 
-  facet_grid(rho ~ prop_valid)
-
-df %>%
-  filter(z_rho != 0) %>%
-  ggplot(aes(Method, alpha, fill = Method)) + 
-  geom_boxplot() + 
-  scale_fill_d3() + 
-  geom_hline(yintercept = 1, color = 'red', linetype = 'dashed') + 
-  theme_bw() + 
-  facet_grid(rho ~ prop_valid)
-
-
-df <- fread('./simulations/experiment_simulations_3.csv')[1:24]
-colnames(df) <- c('sim_idx', 'lo', 'hi')
-df[is.na(lo), lo := hi]
-df[is.na(hi), hi := lo]
-df <- df %>% pivot_longer(-sim_idx, names_to = 'bound', values_to = 'soft_iv')
-df$sim_idx <- as.numeric(df$sim_idx)
-res2 <- res %>% 
-  group_by(sim_idx) %>% 
-  summarize(TSLS_mu = mean(TSLS), sisVIVE_mu = mean(sisVIVE), MBE_mu = mean(MBE),
-            TSLS_sd = sd(TSLS), sisVIVE_sd = sd(sisVIVE), MBE_sd = sd(MBE))
-colnames(res2) <- gsub('_mu', '', colnames(res2))
-res2 <- res2 %>%
-  pivot_longer(TSLS:MBE, names_to = 'Method', values_to = 'alpha')
-colnames(res2) <- gsub('_sd', '', colnames(res2))
-res3 <- res2 %>%
-  select(sim_idx:MBE) %>%
-  pivot_longer(-sim_idx, names_to = 'Method', values_to = 'se') %>%
-  unique(.)
-res2 <- res2 %>% 
-  select(sim_idx, Method, alpha) %>%
-  unique(.) %>%
-  inner_join(res3, by = c('sim_idx', 'Method'))
-
-
-colnames(sim_idx)[1] <- 'sim_idx'
-
-
-
-df <- df %>% 
-  select(-bound) %>%
-  inner_join(res2, by = 'sim_idx') %>%
-  inner_join(sim_idx, by = 'sim_idx') %>%
-  pivot_longer(soft_iv:MBE, names_to = 'Method', values_to = 'alpha')
-
-df <- df %>% 
-  select(-bound) %>%
-  inner_join(select(res, -sub_idx), by = 'sim_idx') %>%
-  inner_join(sim_idx, by = 'sim_idx') %>%
-  pivot_longer(soft_iv:MBE, names_to = 'Method', values_to = 'alpha') %>%
-  mutate(Sigma_z = ifelse(z_rho == 0, 'identity', 'toeplitz'),
-         prop_valid = paste('pr_valid =', prop_valid))
-
-df <- as.data.table(df)
-df[Method == 'TSLS', Method := '2SLS']
-df[, Method := factor(Method, levels = c('soft_iv', '2SLS', 'sisVIVE', 'MBE'))]
-
-df %>%
-  ggplot(aes(as.factor(rho), alpha, fill = Method)) +
-  geom_boxplot() +
-  geom_hline(yintercept = 1, color = 'red', linetype = 'dashed') + 
-  scale_fill_d3() + 
-  labs(x = 'Unobserved Confounding', y = 'Average Treatment Effect') +
-  theme_bw() + 
-  facet_grid(Sigma_z ~ prop_valid)
-
-
-df %>%
-  ggplot(aes(as.factor(rho), alpha, fill = Method)) +
-  geom_bar(stat = 'identity', color = 'black', position = position_dodge()) +
-  geom_errorbar(aes(ymin = alpha - se, ymax = alpha + se), width = .2,
-                position = position_dodge(.9))
-  geom_hline(yintercept = 1, color = 'red', linetype = 'dashed') + 
-  scale_fill_d3() + 
-  labs(x = 'Unobserved Confounding', y = 'Average Treatment Effect') +
-  theme_bw() + 
-  facet_grid(Sigma_z ~ prop_valid)
-
-
-
-
-
-
-
-
-
+df <- foreach(zz = c(0, 0.5), .combine = rbind) %:%
+  foreach(rr = c(1/4, 3/4), .combine = rbind) %:%
+  foreach(pp = seq(0, 0.95, by = 0.05), .combine = rbind) %dopar%
+  bnchmrk(zz, rr, pp)
 
 
 
