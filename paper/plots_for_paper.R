@@ -251,8 +251,8 @@ tmp <- merge(mu, se, by = c('tau_fctr', 'Bound'))
 tmp[, Bound := factor(Bound, levels = c('Upper', 'Lower'))]
 setnames(df, 'theta', 'mu')
 tmp[, obs := 1]
-true <- df[b==0 & tau_fctr >= 1, .(tau_fctr, Bound, mu)][, se := NA_real_][, obs := 0]
-tmp <- rbind(tmp, true)
+sigma_oracle <- df[b==0, .(tau_fctr, Bound, mu)][, se := NA_real_][, obs := 0]
+tmp <- rbind(tmp, sigma_oracle)
 
 
 # Plot number of candidate instruments against ATE bounds
@@ -263,10 +263,10 @@ p1 <- ggplot() +
               mapping = aes(tau_fctr, mu, ymin = mu - se, ymax = mu + se,
                             fill = Bound), alpha = 0.4) + 
   geom_line(tmp[obs == 1], mapping = aes(tau_fctr, mu, color = Bound)) + 
+  geom_point(tmp[obs == 0], mapping = aes(tau_fctr, mu, fill = Bound), 
+             color = 'black', shape = 21, size = 5) + 
   scale_fill_npg() + 
   scale_color_npg() +
-  geom_point(tmp[obs == 0], mapping = aes(tau_fctr, mu, color = Bound), 
-             shape = 18, size = 5) + 
   labs(x = expression(paste('Leakage threshold ', tau)),
        y = expression(paste('Average Treatment Effect ', theta))) +
   theme_bw() + 
@@ -300,8 +300,8 @@ p2 <- ggplot() +
   geom_line(tmp[obs == 1], mapping = aes(d_z, mu, color = Bound)) + 
   scale_fill_npg() + 
   scale_color_npg() +
-  geom_point(tmp[obs == 0], mapping = aes(d_z, mu, color = Bound), 
-             shape = 18, size = 5) + 
+  geom_point(tmp[obs == 0], mapping = aes(d_z, mu, fill = Bound), 
+             color = 'black', shape = 21, size = 5) + 
   geom_hline(yintercept = 1, linewidth = 1, color = 'grey60') +
   labs(x = expression(paste('Number of Candidate Instruments ', d[Z])),
        y = expression(paste('Average Treatment Effect ', theta))) +
@@ -315,18 +315,6 @@ p2 <- ggplot() +
 # Save both as a grid
 plot_grid(p1, p2, labels = c('A', 'B'), label_size = 24)
 ggsave2('./plots/Dz_and_tau_vs_ate.pdf', height = 7, width = 14)
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
