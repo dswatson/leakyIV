@@ -4,6 +4,8 @@ setwd('~/Documents/Kings/leakyIV/paper')
 # Load libraries
 library(leakyIV)
 library(data.table)
+library(glasso)
+library(mvnfast)
 library(ggplot2)
 library(ggsci)
 library(cowplot)
@@ -126,108 +128,39 @@ ggsave2('./plots/lemmas.pdf', height = 7, width = 14)
 
 ################################################################################
 
+# This function computes the predictions of a Sigma oracle for a given 
+# dimensionality and factor on tau*, as well as n_sim leakyIV estimates at 
+# sample size n.
 
-# This function takes a covariance matrix and L2 threshold as input
-# and returns the corresponding ATE bounds
-leaky_S <- function(Sigma, Theta_z, tau) {
-  
-  # Extract covariance parameters
-  d <- ncol(Sigma)
-  d_z <- ncol(Sigma) - 2L
-  Sigma_zy <- matrix(Sigma[seq_len(d_z), d], ncol = 1L)
-  Sigma_yz <- t(Sigma_zy)
-  Sigma_zx <- matrix(Sigma[seq_len(d_z), d - 1L], ncol = 1L)
-  Sigma_xz <- t(Sigma_zx)
-  sigma_xy <- Sigma[d, d - 1L]
-  var_x <- Sigma[d - 1L, d - 1L]
-  var_y <- Sigma[d, d]
-  
-  # Our magic variables
-  eta_x2 <- var_x - as.numeric(Sigma_xz %*% Theta_z %*% Sigma_zx)
-  phi2 <- var_y - as.numeric(Sigma_yz %*% Theta_z %*% Sigma_zy)
-  psi <- sigma_xy - as.numeric(Sigma_xz %*% Theta_z %*% Sigma_zy)
-  if (any(c(eta_x2, phi2) < 0)) {
-    stop('Covariance estimator implies negative conditional variance. ',
-         'Consider rerunning with another method.')
-  }
-  
-  # Compute theta as a function of rho 
-  theta_fn <- function(rho) {
-    theta <- (psi / eta_x2) - sign(rho) * 
-      ((sqrt((1 - 1/rho^2) * (psi^2 - phi2 * eta_x2)))) / 
-      (-eta_x2 * (1 - 1/rho^2))
-    return(theta)
-  }
-  # Compute gamma norms as a function of rho
-  norm_fn <- function(rho) {
-    theta <- theta_fn(rho)
-    gamma <- as.numeric(Theta_z %*% (Sigma_zy - theta * Sigma_zx))
-    #norm <- (sum(abs(gamma)^p))^(1 / p)
-    norm <- sqrt(sum(gamma^2))
-    return(norm)
-  }
-  # Compute loss as a function of rho
-  loss_fn <- function(rho) {
-    norm <- norm_fn(rho)
-    loss <- (tau - norm)^2
-    return(loss)
-  }
-  
-  # Find the split point: upper and lower bounds lie on either side of
-  # rho_star, assuming tau > min_norm$value
-  min_norm <- stats::optim(0, norm_fn, method = 'Brent', lower = -1, upper = 1)
-  if (tau < min_norm$value) {
-    warning('tau is too low, resulting in an empty feasible region. ',
-            'Consider rerunning with a higher threshold.')
-    ATE_lo <- ATE_hi <- NA_real_
-  } else {
-    rho_star <- min_norm$par
-    rho_lo <- stats::optim(mean(c(-1, rho_star)), loss_fn, method = 'Brent', 
-                           lower = -1, upper = rho_star)$par
-    rho_hi <- stats::optim(mean(c(rho_star, 1)), loss_fn, method = 'Brent', 
-                           lower = rho_star, upper = 1)$par
-    ATE_lo <- theta_fn(rho_hi)
-    ATE_hi <- theta_fn(rho_lo)
-  }
-  
-  # Export
-  out <- data.table(ATE_lo, ATE_hi)
-  return(out)
-}
-
-# This function runs n_sim loops of a given DGP, taking draws of size n
 outer_loop <- function(d_z, tau_fctr, n = 2000, n_sim = 200) {
   
   # Generate data, extract "population" covariance matrix
   sim <- sim_dat(n = 1e5, d_z, z_cnt = TRUE, z_rho = 0, rho = 1/4, 
                  theta = 1, r2_x = 3/4, r2_y = 3/4, pr_valid = 0)
-  dat <- sim$dat
-  d <- ncol(dat)
+  d <- d_z + 2
   l2 <- sqrt(sum(sim$params$gamma^2))
   
   # Treat this as ground truth
-  Sigma <- cov(dat) 
-  Theta_z <- solve(Sigma[seq_len(d_z), seq_len(d_z)])
-  theta_bnds <- leaky_S(Sigma, Theta_z, tau = l2 * tau_fctr)[, b := 0]
-  
-  # Subsample
+  Sigma <- cov(sim$dat)
+  S_oracle <- leakyIV(sim$dat$x, sim$dat$y, sim$dat[, -c('x', 'y')],
+                      tau = l2 * tau_fctr, method = 'mle')[, b := 0]
+  dat <- rmvn(n * n_sim, mu = rep(0, d), Sigma)
   inner_loop <- function(b) {
-    tmp <- dat[sample(1e5, n), ]
-    x <- tmp$x
-    y <- tmp$y
-    z <- tmp[, -c('x', 'y')]
-    # Need regularization for d_z >= 5, apparently
+    tmp <- dat[((b - 1) * n + 1):(b * n), ]
+    z <- tmp[, seq_len(d_z)]
+    x <- tmp[, d_z + 1]
+    y <- tmp[, d_z + 2]
     if (d_z <= 5) {
       out <- leakyIV(x, y, z, tau = l2 * tau_fctr, method = 'mle')
     } else {
-      out <- leakyIV(x, y, z, tau = l2 * tau_fctr, method = 'glasso', rho = .0015)
+      out <- leakyIV(x, y, z, tau = l2 * tau_fctr, method = 'glasso', rho = 0.0015)
     }
     return(out[, b := b])
   }
   res <- foreach(bb = seq_len(n_sim), .combine = rbind) %do% inner_loop(bb)
   
   # Export
-  out <- rbind(theta_bnds, res)
+  out <- rbind(S_oracle, res)
   out <- melt(out, id.vars = 'b', variable.name = 'Bound', value.name = 'theta')
   out[, Bound := fifelse(grepl('lo', Bound), 'Lower', 'Upper')]
   out[, 'd_z' := d_z][, 'tau_fctr' := tau_fctr]
@@ -275,7 +208,7 @@ p1 <- ggplot() +
         legend.position = 'bottom')
 
 # Hold tau_fctr fixed at 1.5 and run across different values of d_z
-df <- foreach(dd = 2:20, .combine = rbind) %dopar% outer_loop(dd, 1.5)
+df <- foreach(dd = 1:20, .combine = rbind) %dopar% outer_loop(dd, 1.5)
 
 # Compute means, standard errors
 df[, sum(is.na(theta)), by = d_z]
@@ -313,7 +246,7 @@ p2 <- ggplot() +
 ################################################################################
 
 # Save both as a grid
-plot_grid(p1, p2, labels = c('A', 'B'), label_size = 24)
+pl <- plot_grid(p1, p2, labels = c('A', 'B'), label_size = 24)
 ggsave2('./plots/Dz_and_tau_vs_ate.pdf', height = 7, width = 14)
 
 
