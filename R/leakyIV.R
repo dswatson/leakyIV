@@ -135,6 +135,7 @@ leakyIV <- function(
     n_z <- length(z)
     d_z <- 1L
   }
+  d <- d_z + 2L
   if (is.null(n_boot)) {
     n_boot <- 0L
     parallel <- FALSE
@@ -169,9 +170,9 @@ leakyIV <- function(
     stop('method not recognized. Must be one of "mle", "shrink", or "glasso".')
   }
   if (!is.null(Sigma)) {
-    if (ncol(Sigma) != d_z | nrow(Sigma) != d_z) {
-      stop('Pre-computed covariance matrix Sigma must have ncol(z) rows and ', 
-           'ncol(z) columns.')
+    if (ncol(Sigma) != d | nrow(Sigma) != d) {
+      stop('Pre-computed covariance matrix Sigma must have ncol(z) + 2 rows ',
+           'and ncol(z) + 2 columns.')
     }
     if (!is.positive.definite(Sigma)) {
       stop('Pre-computed covariance matrix Sigma must be positive definite.')
@@ -179,7 +180,6 @@ leakyIV <- function(
   }
   
   # Preliminaries
-  d <- d_z + 2L
   if (length(tau) > 1L) {
     z <- z / tau
     if (!is.null(Sigma)) {
@@ -249,19 +249,16 @@ leakyIV <- function(
     
     # Our magic variables
     eta_x2 <- var_x - as.numeric(Sigma_xz %*% Theta_z %*% Sigma_zx)
-    phi2 <- var_y - as.numeric(Sigma_yz %*% Theta_z %*% Sigma_zy)
-    psi <- sigma_xy - as.numeric(Sigma_xz %*% Theta_z %*% Sigma_zy)
-    if (any(c(eta_x2, phi2) < 0)) {
+    k_yy <- var_y - as.numeric(Sigma_yz %*% Theta_z %*% Sigma_zy)
+    k_xy <- sigma_xy - as.numeric(Sigma_xz %*% Theta_z %*% Sigma_zy)
+    if (any(c(eta_x2, k_yy) < 0)) {
       stop('Covariance estimator implies negative conditional variance. ',
            'Consider rerunning with another method.')
     }
     
     # Compute theta as a function of rho 
     theta_fn <- function(rho) {
-      theta <- (psi / eta_x2) - sign(rho) * 
-        ((sqrt((1 - 1/rho^2) * (psi^2 - phi2 * eta_x2)))) / 
-        (-eta_x2 * (1 - 1/rho^2))
-      return(theta)
+      (k_xy - rho * ( sqrt((eta_x2 * k_yy - k_xy^2) / (1 - rho^2)))) / eta_x2
     }
     # Compute gamma norms as a function of rho
     norm_fn <- function(rho) {
