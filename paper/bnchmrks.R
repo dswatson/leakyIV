@@ -1,5 +1,5 @@
 # Set working directory
-setwd('~/Documents/Kings/leakyIV/paper')
+setwd('C:/Users/k23067841/OneDrive - King\'s College London/Documents/leakyIV2/benchmark_simulations')
 
 # Load libraries, register cores
 library(data.table)
@@ -8,8 +8,8 @@ library(sisVIVE)
 library(leakyIV)
 library(ggplot2)
 library(ggsci)
-library(doMC)
-registerDoMC(8)
+library(doParallel)
+registerDoParallel(8)
 
 # Load scripts
 source('bayesian_baseline.R')
@@ -21,7 +21,7 @@ source('simulator.R')
 set.seed(123, kind = "L'Ecuyer-CMRG")
 
 # Benchmark against 2SLS, sisVIVE, MBE, and Bayes:
-bnchmrk <- function(z_rho, rho, pr_valid, n = 1000, n_sim = 100) {
+bnchmrk <- function(z_rho, rho, pr_valid, n = 1000, n_sim = 5) {
   
   # Generate data, extract "population" data
   sim <- sim_dat(n = 1e5, d_z = 20, z_cnt = TRUE, z_rho, rho, 
@@ -38,47 +38,47 @@ bnchmrk <- function(z_rho, rho, pr_valid, n = 1000, n_sim = 100) {
     tmp <- sim$dat[sample(1e5, n), ]
     
     # Run 2SLS
-    f0 <- lm(x ~ ., data = tmp[, -c('y')])
-    tmp[, x_hat := fitted(f0)]
-    f1 <- lm(y ~ x_hat, data = tmp)
-    ate_2sls <- as.numeric(tidy(f1)$estimate[2])
+    #f0 <- lm(x ~ ., data = tmp[, -c('y')])
+    #tmp[, x_hat := fitted(f0)]
+    #f1 <- lm(y ~ x_hat, data = tmp)
+    #ate_2sls <- as.numeric(tidy(f1)$estimate[2])
     
     # Run sisVIVE
-    sisvive <- cv.sisVIVE(tmp$y, tmp$x, as.matrix(tmp[, -c('x', 'y')]))
-    ate_sisvive <- sisvive$beta
+    #sisvive <- cv.sisVIVE(tmp$y, tmp$x, as.matrix(tmp[, -c('x', 'y')]))
+    #ate_sisvive <- sisvive$beta
     
     # Run MBE
-    beta_hat <- as.numeric(tidy(f0)$estimate[2:(d_z + 1)])
-    se_beta <- as.numeric(tidy(f0)$std.error[2:(d_z + 1)])
-    f2 <- lm(y ~ ., data = tmp[, -c('x_hat', 'x')])
-    gamma_hat <- tidy(f2)$estimate[2:(d_z + 1)]
-    se_gamma <- tidy(f2)$std.error[2:(d_z + 1)]
-    mbe <- MBE(beta_hat, gamma_hat, se_beta, se_gamma, phi = 1, n_boot = 1)
-    ate_mbe <- mbe$Estimate[2]
+    #beta_hat <- as.numeric(tidy(f0)$estimate[2:(d_z + 1)])
+    #se_beta <- as.numeric(tidy(f0)$std.error[2:(d_z + 1)])
+    #f2 <- lm(y ~ ., data = tmp[, -c('x_hat', 'x')])
+    #gamma_hat <- tidy(f2)$estimate[2:(d_z + 1)]
+    #se_gamma <- tidy(f2)$std.error[2:(d_z + 1)]
+    #mbe <- MBE(beta_hat, gamma_hat, se_beta, se_gamma, phi = 1, n_boot = 1)
+    #ate_mbe <- mbe$Estimate[2]
     
-    # # Bayesian baseline
-    # bb_res <- baseline_gaussian_sample(
-    #   m = 2000, dat = as.matrix(tmp), pos_z = 1:d_z, pos_x = d_z + 1, 
-    #   pos_y = d_z + 1, prop_var = 0.01, lvar_z_mu = -1, lvar_z_var = 3,
-    #   beta_var = 5, pre_gamma_var = 1, theta_var = 5, lvar_error_mu = -1,
-    #   lvar_error_var = 1, tau = tau, alpha = 0.05
-    # )
-    # ate_bb <- mean(bb_res$theta)
-    # ate_lo_bb <- bb_res$lb_interval[2]
-    # ate_hi_bb <- bb_res$ub_interval[1]
+    # Bayesian baseline
+    bb_res <- baseline_gaussian_sample(
+     m = 2000, dat = as.matrix(tmp), pos_z = 1:d_z, pos_x = d_z + 1, 
+     pos_y = d_z + 1, prop_var = 0.01, lvar_z_mu = -1, lvar_z_var = 3,
+     beta_var = 5, pre_gamma_var = 1, theta_var = 5, lvar_error_mu = -1,
+     lvar_error_var = 1, tau = tau, alpha = 0.05
+    )
+     ate_bb <- mean(bb_res$theta)
+     ate_lo_bb <- bb_res$lb_interval[2]
+     ate_hi_bb <- bb_res$ub_interval[1]
     
     # LeakyIV
-    suppressWarnings(
-      ate_bnds <- leakyIV(tmp$x, tmp$y, tmp[, -c('x', 'y')], tau = tau,
-                          method = 'glasso', rho = 0.01)
-    )
-    ate_lo <- ate_bnds$ATE_lo
-    ate_hi <- ate_bnds$ATE_hi
+    #suppressWarnings(
+    #  ate_bnds <- leakyIV(tmp$x, tmp$y, tmp[, -c('x', 'y')], tau = tau,
+    #                      method = 'glasso', rho = 0.01)
+    #)
+    #ate_lo <- ate_bnds$ATE_lo
+    #ate_hi <- ate_bnds$ATE_hi
     
     # Export
     out <- data.table(b,
-      method = c('TSLS', 'sisVIVE', 'MBE', 'Lower', 'Upper'),
-      theta = c(ate_2sls, ate_sisvive, ate_mbe, ate_lo, ate_hi)
+      method = c('Bayesian est', 'Basyesian lo', 'Bayesian hi'),
+      theta = c(ate_bb, ate_lo_bb, ate_hi_bb)
     )
     return(out)
   }
@@ -89,6 +89,8 @@ bnchmrk <- function(z_rho, rho, pr_valid, n = 1000, n_sim = 100) {
   return(out)
   
 }
+
+df <- bnchmrk(0, 1/4, 0.5)
 
 # Execute in parallel
 df <- foreach(zz = c(0, 0.5), .combine = rbind) %:%

@@ -70,6 +70,8 @@ print(tight_avg_results_diag)
 tight_avg_results_toeplitz <- dplyr::left_join(toeplitz_sims, tight_avg_results, by="sim_idx")
 print(tight_avg_results_toeplitz)
 
+plot.new()
+
 polygon(c(tight_avg_results_diag$pr_valid, rev(tight_avg_results_diag$pr_valid)), c(abs(tight_avg_results_diag$ATE_lo_mean), abs(rev(tight_avg_results_diag$ATE_hi_mean))),
         col = "#6BD7AF")
 

@@ -1,5 +1,5 @@
 # Set working directory
-setwd('C:/Users/k23067841/Downloads/LeakyIV simulations again')
+setwd('C:/Users/k23067841/OneDrive - King\'s College London/Documents/leakyIV2/benchmark_simulations')
 
 # Load libraries, register cores
 library(data.table)
@@ -90,7 +90,7 @@ sim_dat <- function(n, d_z, z_rho, rho, theta, r2_x, r2_y, pr_valid, sim_idx) {
   
   # Export results
   dat <- data.table(z, x, y, theta, gamma_list)
-  fwrite(dat, paste0('./sisVIVE with errors n1e4 low theta/', sim_idx, '.csv'))
+  fwrite(dat, paste0('./prop_valid_n50_1000_per_subidx_1/', sim_idx, '.csv'))
   
 }
 
@@ -105,9 +105,9 @@ sim_dat <- function(n, d_z, z_rho, rho, theta, r2_x, r2_y, pr_valid, sim_idx) {
 
 sim_grd <- as.data.table(expand.grid(
   'd_z' = c(20),
-  'z_rho' = c(1/2),
-  'rho' = c(3/4),
-  'theta' = c('low'),
+  'z_rho' = c(0, 1/2),
+  'rho' = c(1/4, 3/4),
+  'theta' = c('high'),
   'pr_valid' = c(seq(0, 1, 0.05)) 
 ))
 
@@ -121,6 +121,8 @@ sapply(seq_len(nrow(sim_grd)), function(i) {
           sim_idx = i)
 })
 
+
+
 print(nrow(sim_grd))
 
 theta_gamma <- data.frame(matrix(ncol = 1 + d_z, nrow = 0))
@@ -128,7 +130,7 @@ colnames(theta_gamma) <- colnames(theta_gamma) <- paste0('z', seq_len(d_z))
 
 for (i in 1:nrow(sim_grd)) {
   tmp <- sim_grd[i, ]
-  theta_gamma %>% add_row(sim_dat(n = 1e4L, d_z = tmp$d_z, z_rho = tmp$z_rho, rho = tmp$rho,
+  theta_gamma %>% add_row(sim_dat(n = 5e4L, d_z = tmp$d_z, z_rho = tmp$z_rho, rho = tmp$rho,
                          theta = tmp$theta, r2_x = 0.8, r2_y = 0.8, pr_valid = tmp$pr_valid,
                          sim_idx = i))
 }
@@ -139,4 +141,4 @@ cbind(sim_grid, theta_gamma)
 
 sim_grd[, sim_idx := .I]
 setcolorder(sim_grd, 'sim_idx')
-fwrite(sim_grd, './sisVIVE with errors n1e4 low theta/sim_idx.csv')
+fwrite(sim_grd, './prop_valid_n50_1000_per_subidx_1/sim_idx.csv')

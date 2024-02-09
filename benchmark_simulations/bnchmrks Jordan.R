@@ -1,10 +1,5 @@
 # Set working directory
-setwd('C:/Users/k23067841/Downloads/LeakyIV simulations again')
-
-
-install.packages("reshape2")
-
-devtools::install_github('dswatson/leakyIV')
+setwd('C:/Users/k23067841/OneDrive - King\'s College London/Documents/leakyIV2/benchmark_simulations')
 
 # Load libraries, register cores
 library(reshape2)
@@ -26,16 +21,18 @@ source('MBE.R')
 set.seed(123, kind = "L'Ecuyer-CMRG")
 
 # Import sim_idx
-sim_idx <- fread('./sisVIVE with errors n1e4 low theta/sim_idx.csv')
+sim_idx <- fread('./prop_valid_n50_1000_per_subidx_1/sim_idx.csv')
 
 # Benchmark against sisVIVE and 2SLS:
 bnchmrk <- function(sim_idx, sub_idx) {
+  
+  setwd('C:/Users/k23067841/OneDrive - King\'s College London/Documents/leakyIV2/benchmark_simulations')
   
   source('MBE.R')
   source("leakyIV.R")
   
   # Read the data
-  dat <- data.table::fread(paste0('./sisVIVE with errors n1e4 low theta/', sim_idx, '.csv'))
+  dat <- data.table::fread(paste0('./prop_valid_n50_1000_per_subidx_1/', sim_idx, '.csv'))
   
   d_z <- (ncol(dat) - 3)/2
   
@@ -94,8 +91,6 @@ bnchmrk <- function(sim_idx, sub_idx) {
   
   ace_mbe <- mbe$Estimate[2]
   
-  std_err_mbe <- mbe$SE
-  
   print(mbe$SE)
   
   # Run leakyIV
@@ -119,11 +114,22 @@ bnchmrk <- function(sim_idx, sub_idx) {
   leaky_ace_lo = as.numeric(dplyr::select(leaky_ace, 1))
   leaky_ace_hi = as.numeric(dplyr::select(leaky_ace, 2))
   
+  print(sim_idx)
+  print(sub_idx)
+  print(norm_l2)
+  print(known_theta)
+  print(std_err_2sls)
+  print(ace_sisVIVE)
+  print(ace_mbe)
+  print(leaky_ace_lo)
+  print(leaky_ace_hi)
+  
+  
   # Export
   out <- data.table(
     sim_idx = sim_idx, sub_idx = sub_idx, norm_gamma = norm_l2, tau_div_norm = 1, norm = 'L2', regularization = 'none (MLE)', 
     theta_true = known_theta,
-    'TSLS' = ace_2sls, 'sd_err_TSLS' = std_err_2sls, 'sisVIVE' = ace_sisVIVE, 'MBE' = ace_mbe, 'std_err_mbe' = std_err_mbe,
+    'TSLS' = ace_2sls, 'sd_err_TSLS' = std_err_2sls, 'sisVIVE' = ace_sisVIVE, 'MBE' = ace_mbe,
     ATE_lo = leaky_ace_lo, ATE_hi = leaky_ace_hi
   )
   
@@ -131,38 +137,38 @@ bnchmrk <- function(sim_idx, sub_idx) {
   
   # tau = d ||gamma||_2
   
-#  for(d in c(1.01, 1.05, 1.1, 1.5, 2)){
-    
-#    tau_l2 <- d*norm_l2
-    
-#    leaky_ace = leakyIV(x_dat, y_dat, z_dat, tau_l2)
-    
-#    leaky_ace_lo = as.numeric(dplyr::select(leaky_ace, 1))
-#    leaky_ace_hi = as.numeric(dplyr::select(leaky_ace, 2))
-    
-#    out <- rbind(out, list(sim_idx, sub_idx, norm_l2,  d, 'L2', 'none (MLE)',
-#                           known_theta, ace_2sls, std_err_2sls,  ace_sisVIVE, ace_mbe, std_err_mbe,
-#                           leaky_ace_lo, leaky_ace_hi))
-    
-#  }
+  #  for(d in c(1.01, 1.05, 1.1, 1.5, 2)){
+  
+  #    tau_l2 <- d*norm_l2
+  
+  #    leaky_ace = leakyIV(x_dat, y_dat, z_dat, tau_l2)
+  
+  #    leaky_ace_lo = as.numeric(dplyr::select(leaky_ace, 1))
+  #    leaky_ace_hi = as.numeric(dplyr::select(leaky_ace, 2))
+  
+  #    out <- rbind(out, list(sim_idx, sub_idx, norm_l2,  d, 'L2', 'none (MLE)',
+  #                           known_theta, ace_2sls, std_err_2sls,  ace_sisVIVE, ace_mbe, std_err_mbe,
+  #                           leaky_ace_lo, leaky_ace_hi))
+  
+  #  }
   
   
   return(out)
 }
 
-bnchmrk(10, 1001)
+bnchmrk(1, 4001)
 
 # Execute in parallel
-res <- foreach(aa = seq_len(42), .combine = rbind, .packages = c("data.table", "broom", "sisVIVE", 
+res <- foreach(aa = seq_len(84), .combine = rbind, .packages = c("data.table", "broom", "sisVIVE", 
                                                                 "tidyverse", "ggsci", "LambertW", "reshape2", "tidyr")) %:%
-  foreach(bb = seq(1, 9001, 1000), .combine = rbind) %dopar%
+  foreach(bb = seq(1, 49001, 1000), .combine = rbind) %dopar%
   #prev_time <- Sys.time()
   #curr_time <- Sys.time()
   bnchmrk(aa, bb)
 
 print(res)
 
-fwrite(res, './sisVIVE with errors n1e4 low theta/results.csv')
+fwrite(res, './prop_valid_n50_1000_per_subidx_1/results.csv')
 
 # Plot results
 df <- res %>%
