@@ -9,8 +9,8 @@ library(sisVIVE)
 library(leakyIV)
 library(ggplot2)
 library(ggsci)
-library(doMC)
-registerDoMC(8)
+library(doParallel)
+registerDoParallel(8)
 
 # Load scripts
 source('bayesian_baseline.R')
@@ -51,23 +51,23 @@ bnchmrk <- function(z_rho, rho, pr_valid, d_z, n, n_sim) {
     ate_bda <- as.numeric(tidy(f0)$estimate[d_z + 2])
     
     # Run 2SLS
-    f0 <- lm(x ~ ., data = tmp[, -c('y')])
-    tmp[, x_hat := fitted(f0)]
-    f1 <- lm(y ~ x_hat, data = tmp)
-    ate_2sls <- as.numeric(tidy(f1)$estimate[2])
+    #f0 <- lm(x ~ ., data = tmp[, -c('y')])
+    #tmp[, x_hat := fitted(f0)]
+    #f1 <- lm(y ~ x_hat, data = tmp)
+    #ate_2sls <- as.numeric(tidy(f1)$estimate[2])
     
     # Run sisVIVE
-    sisvive <- cv.sisVIVE(tmp$y, tmp$x, as.matrix(tmp[, -c('x', 'y')]))
-    ate_sisvive <- sisvive$beta
+    #sisvive <- cv.sisVIVE(tmp$y, tmp$x, as.matrix(tmp[, -c('x', 'y')]))
+    #ate_sisvive <- sisvive$beta
     
     # Run MBE
-    beta_hat <- as.numeric(tidy(f0)$estimate[2:(d_z + 1)])
-    se_beta <- as.numeric(tidy(f0)$std.error[2:(d_z + 1)])
-    f2 <- lm(y ~ ., data = tmp[, -c('x_hat', 'x')])
-    gamma_hat <- tidy(f2)$estimate[2:(d_z + 1)]
-    se_gamma <- tidy(f2)$std.error[2:(d_z + 1)]
-    mbe <- MBE(beta_hat, gamma_hat, se_beta, se_gamma, phi = 1, n_boot = 1)
-    ate_mbe <- mbe$Estimate[2]
+    #beta_hat <- as.numeric(tidy(f0)$estimate[2:(d_z + 1)])
+    #se_beta <- as.numeric(tidy(f0)$std.error[2:(d_z + 1)])
+    #f2 <- lm(y ~ ., data = tmp[, -c('x_hat', 'x')])
+    #gamma_hat <- tidy(f2)$estimate[2:(d_z + 1)]
+    #se_gamma <- tidy(f2)$std.error[2:(d_z + 1)]
+    #mbe <- MBE(beta_hat, gamma_hat, se_beta, se_gamma, phi = 1, n_boot = 1)
+    #ate_mbe <- mbe$Estimate[2]
     
     # LeakyIV
     suppressWarnings(
@@ -94,6 +94,8 @@ bnchmrk <- function(z_rho, rho, pr_valid, d_z, n, n_sim) {
   return(out)
   
 }
+
+df <- bnchmrk(0, 1/4, 0.5)
 
 # Execute in parallel
 df <- foreach(zz = c(0, 0.5), .combine = rbind) %:%
