@@ -3,6 +3,7 @@ setwd('~/Documents/Kings/leakyIV/paper')
 
 # Load libraries, register cores
 library(data.table)
+library(mvnfast)
 library(broom)
 library(sisVIVE)
 library(leakyIV)
@@ -16,29 +17,34 @@ source('bayesian_baseline.R')
 source('MBE.R')
 source('simulator.R')
 
-
 # Set seed
 set.seed(123, kind = "L'Ecuyer-CMRG")
 
 # Benchmark against backdoor adjustment, 2SLS, sisVIVE, and MBE:
-bnchmrk <- function(z_rho, rho, pr_valid, n, n_sim) {
-  
+bnchmrk <- function(z_rho, rho, pr_valid, d_z, n, n_sim) {
   
   # Generate data, extract "population" data
-  sim <- sim_dat(n = 1e5, d_z = 20, z_cnt = TRUE, z_rho, rho,
-                 theta = 1, r2_x = 1/4, r2_y = 3/4, pr_valid)
+  sim <- sim_dat(n = 1e5, d_z, z_cnt = TRUE, z_rho, rho,
+                 theta = 1, r2_x = 3/4, r2_y = 3/4, pr_valid)
   # sim <- sim_dat2(n = 1e5, d_z = 20, z_cnt = TRUE, z_rho, rho,
   #                 theta = 'high', r2_x = 4/5, r2_y = 4/5, pr_valid)
-  d_z <- 20
+  # sim <- sim_dat3(n = 1e5, d_z = 20, z_cnt = TRUE, z_rho, rho,
+  #                 theta = 'high', r2_x = 4/5, r2_y = 4/5, pr_valid)
   d <- d_z + 2
   l2 <- sqrt(sum(sim$params$gamma^2))
   tau <- 1.2 * l2
+  
+  # Treat this as ground truth
+  Sigma <- cov(sim$dat)
+  dat <- as.data.table(rmvn(n * n_sim, mu = rep(0, d), Sigma))
+  colnames(tmp) <- c(paste0('z', seq_len(d_z)), 'x', 'y')
   
   # Inner loop
   inner_loop <- function(b) {
     
     # Draw data
-    tmp <- sim$dat[sample(1e5, n), ]
+    tmp <- dat[((b - 1) * n + 1):(b * n), ]
+    #tmp <- sim$dat[sample(1e5, n), ]
     
     # Run backdoor adjustment
     f0 <- lm(y ~ ., data = tmp)
@@ -63,23 +69,13 @@ bnchmrk <- function(z_rho, rho, pr_valid, n, n_sim) {
     mbe <- MBE(beta_hat, gamma_hat, se_beta, se_gamma, phi = 1, n_boot = 1)
     ate_mbe <- mbe$Estimate[2]
     
-    # # Bayesian baseline
-    # bb_res <- baseline_gaussian_sample(
-    #   m = 2000, dat = as.matrix(tmp), pos_z = 1:d_z, pos_x = d_z + 1, 
-    #   pos_y = d_z + 1, prop_var = 0.01, lvar_z_mu = -1, lvar_z_var = 3,
-    #   beta_var = 5, pre_gamma_var = 1, theta_var = 5, lvar_error_mu = -1,
-    #   lvar_error_var = 1, tau = tau, alpha = 0.05
-    # )
-    # ate_bb <- mean(bb_res$theta)
-    # ate_lo_bb <- bb_res$lb_interval[2]
-    # ate_hi_bb <- bb_res$ub_interval[1]
-    
     # LeakyIV
     suppressWarnings(
-      ate_bnds <- leakyIV(tmp$x, tmp$y, tmp[, -c('x', 'y')], tau = tau,
-                          method = 'glasso', rho = 0.005)
+      # ate_bnds <- leakyIV(tmp$x, tmp$y, tmp[, -c('x', 'y')], tau = tau,
+      #                     method = 'glasso', rho = 0.005)
       # ate_bnds <- leakyIV(tmp$x, tmp$y, tmp[, -c('x', 'y')], tau = tau,
       #                     method = 'mle')
+      ate_bnds <- leakyIV(0, 0, matrix(0, ncol = d_z), tau = tau, Sigma = Sigma)
     )
     ate_lo <- ate_bnds$ATE_lo
     ate_hi <- ate_bnds$ATE_hi
@@ -101,10 +97,10 @@ bnchmrk <- function(z_rho, rho, pr_valid, n, n_sim) {
 
 # Execute in parallel
 df <- foreach(zz = c(0, 0.5), .combine = rbind) %:%
-  foreach(rr = c(0.25, 0.75), .combine = rbind) %:%
-  foreach(pp = seq(0, 0.95, by = 0.05), .combine = rbind) %dopar%
-  #foreach(pp = seq(0, 0.9, by = 0.1), .combine = rbind) %dopar%
-  bnchmrk(zz, rr, pp, n = 1000, n_sim = 20)
+  foreach(rr = c(0.4, 0.8), .combine = rbind) %:%
+  foreach(pp = seq(0, 1, by = 0.05), .combine = rbind) %dopar%
+  #foreach(pp = seq(0, 0.1, by = 0.1), .combine = rbind) %dopar%
+  bnchmrk(zz, rr, pp, d_z = 20, n = 1000, n_sim = 20)
 
 ################################################################################
 
