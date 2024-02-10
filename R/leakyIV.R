@@ -225,20 +225,18 @@ leakyIV <- function(
       }
       if (method == 'mle') {
         Sigma <- stats::cov.wt(dat, wt = w)$cov
-        Theta_z <- solve(Sigma[seq_len(d_z), seq_len(d_z)])
       } else if (method == 'shrink') {
         Sigma <- cov.shrink(dat, w = w, verbose = FALSE)[seq_len(d), seq_len(d)]
-        Theta_z <- invcov.shrink(dat, verbose = FALSE)[seq_len(d_z), seq_len(d_z)]
+        #Theta_z <- invcov.shrink(dat, verbose = FALSE)[seq_len(d_z), seq_len(d_z)]
       } else if (method == 'glasso') {
         s <- glasso(stats::cov.wt(dat, wt = w)$cov, ...)
         Sigma <- s$w
-        Theta_z <- s$wi[seq_len(d_z), seq_len(d_z)]
+        #Theta_z <- s$wi[seq_len(d_z), seq_len(d_z)]
       }
-    } else {
-      Theta_z <- solve(Sigma[seq_len(d_z), seq_len(d_z)])
     }
     
     # Extract other covariance parameters
+    Theta_z <- solve(Sigma[seq_len(d_z), seq_len(d_z)])
     Sigma_zy <- matrix(Sigma[seq_len(d_z), d], ncol = 1L)
     Sigma_yz <- t(Sigma_zy)
     Sigma_zx <- matrix(Sigma[seq_len(d_z), d - 1L], ncol = 1L)
@@ -252,43 +250,44 @@ leakyIV <- function(
     k_yy <- var_y - as.numeric(Sigma_yz %*% Theta_z %*% Sigma_zy)
     k_xy <- sigma_xy - as.numeric(Sigma_xz %*% Theta_z %*% Sigma_zy)
     if (any(c(eta_x2, k_yy) < 0)) {
-      stop('Covariance estimator implies negative conditional variance. ',
-           'Consider rerunning with another method.')
-    }
-    
-    # Compute theta as a function of rho 
-    theta_fn <- function(rho) {
-      (k_xy - rho * ( sqrt((eta_x2 * k_yy - k_xy^2) / (1 - rho^2)))) / eta_x2
-    }
-    # Compute gamma norms as a function of rho
-    norm_fn <- function(rho) {
-      theta <- theta_fn(rho)
-      gamma <- as.numeric(Theta_z %*% (Sigma_zy - theta * Sigma_zx))
-      norm <- (sum(abs(gamma)^p))^(1 / p)
-      return(norm)
-    }
-    # Compute loss as a function of rho
-    loss_fn <- function(rho) {
-      norm <- norm_fn(rho)
-      loss <- (tau - norm)^2
-      return(loss)
-    }
-    
-    # Find the split point: upper and lower bounds lie on either side of
-    # rho_star, assuming tau > min_norm$value
-    min_norm <- stats::optim(0, norm_fn, method = 'Brent', lower = -1, upper = 1)
-    if (tau < min_norm$value) {
-      warning('tau is too low, resulting in an empty feasible region. ',
-              'Consider rerunning with a higher threshold.')
+      warning('Covariance estimator implies negative conditional variance. ',
+              'Consider rerunning with another method.')
       ATE_lo <- ATE_hi <- NA_real_
     } else {
-      rho_star <- min_norm$par
-      rho_lo <- stats::optim(mean(c(-1, rho_star)), loss_fn, method = 'Brent', 
-                             lower = -1, upper = rho_star)$par
-      rho_hi <- stats::optim(mean(c(rho_star, 1)), loss_fn, method = 'Brent', 
-                             lower = rho_star, upper = 1)$par
-      ATE_lo <- theta_fn(rho_hi)
-      ATE_hi <- theta_fn(rho_lo)
+      # Compute theta as a function of rho 
+      theta_fn <- function(rho) {
+        (k_xy - rho * (sqrt((eta_x2 * k_yy - k_xy^2) / (1 - rho^2)))) / eta_x2
+      }
+      # Compute gamma norms as a function of rho
+      norm_fn <- function(rho) {
+        theta <- theta_fn(rho)
+        gamma <- as.numeric(Theta_z %*% (Sigma_zy - theta * Sigma_zx))
+        norm <- (sum(abs(gamma)^p))^(1 / p)
+        return(norm)
+      }
+      # Compute loss as a function of rho
+      loss_fn <- function(rho) {
+        norm <- norm_fn(rho)
+        loss <- (tau - norm)^2
+        return(loss)
+      }
+      
+      # Find the split point: upper and lower bounds lie on either side of
+      # rho_star, assuming tau > min_norm$value
+      min_norm <- stats::optim(0, norm_fn, method = 'Brent', lower = -1, upper = 1)
+      if (tau < min_norm$value) {
+        warning('tau is too low, resulting in an empty feasible region. ',
+                'Consider rerunning with a higher threshold.')
+        ATE_lo <- ATE_hi <- NA_real_
+      } else {
+        rho_star <- min_norm$par
+        rho_lo <- stats::optim(mean(c(-1, rho_star)), loss_fn, method = 'Brent', 
+                               lower = -1, upper = rho_star)$par
+        rho_hi <- stats::optim(mean(c(rho_star, 1)), loss_fn, method = 'Brent', 
+                               lower = rho_star, upper = 1)$par
+        ATE_lo <- theta_fn(rho_hi)
+        ATE_hi <- theta_fn(rho_lo)
+      }
     }
     
     # Export
