@@ -24,20 +24,16 @@ set.seed(123, kind = "L'Ecuyer-CMRG")
 bnchmrk <- function(z_rho, rho, pr_valid, d_z, n, n_sim) {
   
   # Generate data, extract "population" data
-  sim <- sim_dat(n = 1e5, d_z, z_cnt = TRUE, z_rho, rho,
-                 theta = 1, r2_x = 3/4, r2_y = 3/4, pr_valid)
-  # sim <- sim_dat2(n = 1e5, d_z = 20, z_cnt = TRUE, z_rho, rho,
-  #                 theta = 'high', r2_x = 4/5, r2_y = 4/5, pr_valid)
-  # sim <- sim_dat3(n = 1e5, d_z = 20, z_cnt = TRUE, z_rho, rho,
-  #                 theta = 'high', r2_x = 4/5, r2_y = 4/5, pr_valid)
+  sim <- sim_dat4(n = 1e5, d_z, z_cnt = TRUE, z_rho, rho,
+                  theta = 1, r2_x = 2/3, r2_y = 2/3, pr_valid)
   d <- d_z + 2
   l2 <- sqrt(sum(sim$params$gamma^2))
-  tau <- 1.2 * l2
+  tau <- 1.1 * l2
   
   # Treat this as ground truth
   Sigma <- cov(sim$dat)
   dat <- as.data.table(rmvn(n * n_sim, mu = rep(0, d), Sigma))
-  colnames(tmp) <- c(paste0('z', seq_len(d_z)), 'x', 'y')
+  colnames(dat) <- c(paste0('z', seq_len(d_z)), 'x', 'y')
   
   # Inner loop
   inner_loop <- function(b) {
@@ -51,31 +47,29 @@ bnchmrk <- function(z_rho, rho, pr_valid, d_z, n, n_sim) {
     ate_bda <- as.numeric(tidy(f0)$estimate[d_z + 2])
     
     # Run 2SLS
-    #f0 <- lm(x ~ ., data = tmp[, -c('y')])
-    #tmp[, x_hat := fitted(f0)]
-    #f1 <- lm(y ~ x_hat, data = tmp)
-    #ate_2sls <- as.numeric(tidy(f1)$estimate[2])
+    f0 <- lm(x ~ ., data = tmp[, -c('y')])
+    tmp[, x_hat := fitted(f0)]
+    f1 <- lm(y ~ x_hat, data = tmp)
+    ate_2sls <- as.numeric(tidy(f1)$estimate[2])
     
     # Run sisVIVE
-    #sisvive <- cv.sisVIVE(tmp$y, tmp$x, as.matrix(tmp[, -c('x', 'y')]))
-    #ate_sisvive <- sisvive$beta
+    sisvive <- cv.sisVIVE(tmp$y, tmp$x, as.matrix(tmp[, -c('x', 'y')]))
+    ate_sisvive <- sisvive$beta
     
     # Run MBE
-    #beta_hat <- as.numeric(tidy(f0)$estimate[2:(d_z + 1)])
-    #se_beta <- as.numeric(tidy(f0)$std.error[2:(d_z + 1)])
-    #f2 <- lm(y ~ ., data = tmp[, -c('x_hat', 'x')])
-    #gamma_hat <- tidy(f2)$estimate[2:(d_z + 1)]
-    #se_gamma <- tidy(f2)$std.error[2:(d_z + 1)]
-    #mbe <- MBE(beta_hat, gamma_hat, se_beta, se_gamma, phi = 1, n_boot = 1)
-    #ate_mbe <- mbe$Estimate[2]
+    beta_hat <- as.numeric(tidy(f0)$estimate[2:(d_z + 1)])
+    se_beta <- as.numeric(tidy(f0)$std.error[2:(d_z + 1)])
+    f2 <- lm(y ~ ., data = tmp[, -c('x_hat', 'x')])
+    gamma_hat <- tidy(f2)$estimate[2:(d_z + 1)]
+    se_gamma <- tidy(f2)$std.error[2:(d_z + 1)]
+    mbe <- MBE(beta_hat, gamma_hat, se_beta, se_gamma, phi = 1, n_boot = 1)
+    ate_mbe <- mbe$Estimate[2]
     
     # LeakyIV
     suppressWarnings(
-      # ate_bnds <- leakyIV(tmp$x, tmp$y, tmp[, -c('x', 'y')], tau = tau,
-      #                     method = 'glasso', rho = 0.005)
-      # ate_bnds <- leakyIV(tmp$x, tmp$y, tmp[, -c('x', 'y')], tau = tau,
-      #                     method = 'mle')
-      ate_bnds <- leakyIV(0, 0, matrix(0, ncol = d_z), tau = tau, Sigma = Sigma)
+      ate_bnds <- leakyIV(tmp$x, tmp$y, tmp[, -c('x', 'y')], tau = tau,
+                          method = 'shrink')
+      # ate_bnds <- leakyIV(0, 0, matrix(0, ncol = d_z), tau = tau, Sigma = Sigma)
     )
     ate_lo <- ate_bnds$ATE_lo
     ate_hi <- ate_bnds$ATE_hi
@@ -95,14 +89,12 @@ bnchmrk <- function(z_rho, rho, pr_valid, d_z, n, n_sim) {
   
 }
 
-df <- bnchmrk(0, 1/4, 0.5)
-
 # Execute in parallel
 df <- foreach(zz = c(0, 0.5), .combine = rbind) %:%
-  foreach(rr = c(0.4, 0.8), .combine = rbind) %:%
-  foreach(pp = seq(0, 1, by = 0.05), .combine = rbind) %dopar%
-  #foreach(pp = seq(0, 0.1, by = 0.1), .combine = rbind) %dopar%
-  bnchmrk(zz, rr, pp, d_z = 20, n = 1000, n_sim = 20)
+  foreach(rr = c(1/4, 3/4), .combine = rbind) %:%
+  #foreach(pp = seq(0, 0.95, by = 0.05), .combine = rbind) %dopar%
+  foreach(pp = seq(0, 0.9, by = 0.1), .combine = rbind) %dopar%
+  bnchmrk(zz, rr, pp, d_z = 10, n = 1000, n_sim = 50)
 
 ################################################################################
 
@@ -117,31 +109,30 @@ tmp[, z_rho := fifelse(z_rho == 0, 'Diagonal', 'Toeplitz')]
 tmp[, rho := fifelse(rho > 0.5, 'Strong Confounding', 'Weak Confounding')]
 tmp[, rho := factor(rho, levels = c('Weak Confounding', 'Strong Confounding'))]
 tmp[method == 'TSLS', method := '2SLS']
-tmp[method == 'Lower', method := 'LeakyIV_lo']
-tmp[method == 'Upper', method := 'LeakyIV_hi']
-tmp[, method := factor(
-  method, levels = c('Backdoor', '2SLS', 'sisVIVE', 'MBE', 'LeakyIV_lo', 'LeakyIV_hi')
-)]
 setnames(tmp, 'method', 'Method')
+tmp[, lo := .SD[Method == 'Lower', mu], by = .(z_rho, rho, pr_valid)]
+tmp[, hi := .SD[Method == 'Upper', mu], by = .(z_rho, rho, pr_valid)]
+tmp2 <- tmp[!Method %in% c('Lower', 'Upper')]
+tmp2[, Method := factor(Method, levels = c('Backdoor', '2SLS', 'sisVIVE', 'MBE'))]
 
-p1 <- ggplot(tmp, aes(pr_valid, mu, fill = Method)) + 
-  geom_ribbon(aes(ymin = mu + se, ymax = mu - se), alpha = 0.4) + 
+p2 <- ggplot(tmp2, aes(pr_valid, mu, fill = Method)) + 
+  geom_ribbon(aes(ymin = lo, ymax = hi, fill = 'LeakyIV'), alpha = 0.25) +
+  geom_ribbon(aes(ymin = mu - se, ymax = mu + se), alpha = 0.5) + 
   geom_line(aes(color = Method)) + 
-  geom_hline(yintercept = 1, linewidth = 1, color = 'grey60') +
-  scale_color_d3() +
+  geom_hline(yintercept = 1, linewidth = 0.5, color = 'black') +
+  scale_color_d3(guide = 'none') +
   scale_fill_d3() +
   labs(x = 'Proportion of Valid Instruments',
        y = expression(paste('Average Treatment Effect ', theta))) +
-  facet_grid(z_rho ~ rho) +
+  facet_grid(z_rho ~ rho, scales = 'free') +
   theme_bw() + 
-  theme(legend.position = 'bottom')
-
-
-
-theme(axis.title = element_text(size = 24),
-      legend.title = element_text(size = 24),
-      legend.text = element_text(size = 24),
-      legend.position = 'bottom')
+  theme(axis.title = element_text(size = 12),
+        strip.text.x = element_text(size = 12),
+        strip.text.y = element_text(size = 12),
+        legend.title = element_text(size = 12),
+        legend.text = element_text(size = 12),
+        legend.position = 'bottom')
+ggsave('./plots/benchmarks.pdf')
   
 
 
@@ -163,8 +154,8 @@ saveRDS(out, './bnchmrks/bayesian.rds')
 bayes_bnchmrk <- function(z_rho, rho, pr_valid, n = 1000, n_sim = 100) {
   
   # Generate data, extract "population" data
-  sim <- sim_dat(n = 1e5, d_z = 20, z_cnt = TRUE, z_rho, rho,
-                 theta = 1, r2_x = 3/4, r2_y = 3/4, pr_valid)
+  sim <- sim_dat4(n = 1e5, d_z = 20, z_cnt = TRUE, z_rho, rho,
+                  theta = 1, r2_x = 3/4, r2_y = 3/4, pr_valid)
   d_z <- 20
   d <- d_z + 2
   l2 <- sqrt(sum(sim$params$gamma^2))
@@ -216,13 +207,6 @@ foreach(zz = c(0, 0.5), .combine = rbind) %:%
   foreach(rr = c(1/4, 3/4), .combine = rbind) %:%
   foreach(pp = seq(0, 0.95, by = 0.05), .combine = rbind) %dopar%
   bnchmrk(zz, rr, pp, n_sim = 10)
-
-
-
-
-# Weak confounding is hard because it means that tau is near its theoretical 
-# minimum. We actually do better witih more confounding, weirdly
-
 
 
 
