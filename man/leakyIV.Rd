@@ -5,13 +5,10 @@
 \title{Bounding Causal Effects with Leaky Instruments}
 \usage{
 leakyIV(
-  x,
-  y,
-  z,
+  dat,
   tau,
   p = 2,
   method = "mle",
-  Sigma = NULL,
   n_boot = NULL,
   bayes = FALSE,
   parallel = TRUE,
@@ -19,27 +16,23 @@ leakyIV(
 )
 }
 \arguments{
-\item{x}{Treatment variable.}
-
-\item{y}{Outcome variable.}
-
-\item{z}{One or more leaky instrumental variable(s).}
+\item{dat}{Input data. Either (a) an \eqn{n \times d} data frame or matrix of 
+observations with columns for treatment, outcome, and candidate instruments; 
+or (b) a \eqn{d \times d} covariance matrix over such variables. The latter 
+is incompatible with bootstrapping. Note that in either case, the order of
+variables is presumed to be treatment (\eqn{X}), outcome (\eqn{Y}), leaky 
+instruments (\eqn{Z}).}
 
 \item{tau}{Either (a) a scalar representing the upper bound on the p-norm of 
-linear weights from \code{z} to \code{y}; (b) a vector of length 
-\code{ncol(z)} representing upper bounds on the absolute value of each such 
+linear weights on \eqn{Z} in the structural equation for \eqn{Y}; or (b) a 
+vector representing upper bounds on the absolute value of each such 
 coefficient. See details.}
 
-\item{p}{Power of the norm on linear weights from \code{z} to \code{y} (only 
-relevant if \code{tau} is scalar).}
+\item{p}{Power of the norm for the \code{tau} threshold.}
 
 \item{method}{Estimator for the covariance matrix. Options include 
 (a) \code{"mle"}, the default; (b) \code{"shrink"}, an analytic empirical 
 Bayes solution; or (c) \code{"glasso"}, the graphical lasso. See details.}
-
-\item{Sigma}{Optional pre-computed covariance matrix for \code{x, y, z}.
-If non-\code{NULL}, then \code{Sigma} overrides \code{method}. This is
-incompatible with bootstrapping.}
 
 \item{n_boot}{Optional number of bootstrap replicates.}
 
@@ -55,7 +48,7 @@ is required as input, with no default.}
 \value{
 A data frame with columns for \code{ATE_lo} and \code{ATE_hi}, representing
 lower and upper bounds of the partial identification interval for the 
-causal effect of \code{x} on \code{y}. When bootstrapping, the output data 
+causal effect of \eqn{X} on \eqn{Y}. When bootstrapping, the output data 
 frame contains \code{n_boot} rows, one for each bootstrap replicate.
 }
 \description{
@@ -68,18 +61,17 @@ be (A1) \emph{relevant}, i.e. associated with the treatment; (A2)
 \emph{unconfounded}, i.e. independent of common causes between treatment and 
 outcome; and (A3) \emph{exclusive}, i.e. only affect outcomes through the 
 treatment. The \code{leakyIV} algorithm relaxes (A3), allowing some 
-information leakage from IVs \code{z} to outcomes \code{y} in linear 
-structural equation models. While the average treatment effect (ATE) is no 
-longer identifiable in this setting, tight bounds can be computed exactly for 
-scalar \code{tau} and approximately for vector \code{tau}. 
+information leakage from IVs \eqn{Z} to outcomes \eqn{Y} in linear systems. 
+While the average treatment effect (ATE) is no longer identifiable in this 
+setting, sharp bounds can be computed exactly in most cases. 
 
-We assume the following structural equation for \code{x}: 
+We assume the following structural equation for \eqn{X}: 
 \eqn{X := Z \beta + \epsilon_X}, where the final summand is a noise term that
-correlates with the additive noise in the structural equation for \code{y}: 
+correlates with the additive noise in the structural equation for \eqn{Y}: 
 \eqn{Y := Z \gamma + X \theta + \epsilon_Y}. The ATE is given by the 
 parameter \eqn{\theta}. Whereas classical IV models require each \eqn{\gamma} 
-coefficient to be zero, we permit some direct signal from \code{z} to 
-\code{y}. Specifically, \code{leakyIV} provides support for two types of
+coefficient to be zero, we permit some direct signal from \eqn{Z} to 
+\eqn{Y}. Specifically, \code{leakyIV} provides support for two types of
 information leakage: (a) thresholding the p-norm of linear weights 
 \eqn{\gamma} (scalar \code{tau}); and (b) thresholding the absolute value of 
 each \eqn{\gamma} coefficient one by one (vector \code{tau}). 
@@ -91,14 +83,14 @@ empirical Bayes shrinkage via \code{corpcor::\link[corpcor]{cov.shrink}}
 \code{glasso::\link[glasso]{glasso}} (Friedman et al., 2007). These latter 
 methods are preferable in high-dimensional settings where sample covariance 
 matrices may be unstable or singular. Alternatively, users can pass a 
-pre-computed covariance matrix via the \code{Sigma} argument.
+pre-computed covariance matrix directly as \code{dat}.
 
 Uncertainty can be evaluated in leaky IV models using the bootstrap, provided
-that covariances are estimated internally and not passed directly via the 
-\code{Sigma} argument. Bootstrapping provides a nonparametric approximate
-posterior distribution for min/max values of the average treatment effect of 
-X on Y. Set \code{bayes = TRUE} to replace the classical bootstrap with a 
-Bayesian bootstrap (Rubin, 1981).
+that covariances are estimated internally and not passed directly. 
+Bootstrapping provides a nonparametric sampling distribution for min/max 
+values of the average treatment effect of \eqn{X} on \eqn{Y}. Set 
+\code{bayes = TRUE} to replace the classical bootstrap with a Bayesian 
+bootstrap for approximate posterior inference (Rubin, 1981).
 }
 \examples{
  
@@ -106,7 +98,7 @@ set.seed(123)
 
 # Hyperparameters
 n <- 200
-d_z <- 5
+d_z <- 4
 beta <- rep(1, d_z)
 gamma <- rep(0.1, d_z)
 theta <- 2
@@ -119,20 +111,26 @@ eps <- eps \%*\% chol(S_eps)
 
 # Simulate observables from a leaky IV model
 z <- matrix(rnorm(n * d_z), ncol = d_z)
-x <- as.numeric(z \%*\% beta) + eps[, 1]
-y <- as.numeric(z \%*\% gamma) + x * theta + eps[, 2]
+x <- z \%*\% beta + eps[, 1]
+y <- z \%*\% gamma + x * theta + eps[, 2]
+obs <- cbind(x, y, z)
 
 # Run the algorithm
-leakyIV(x, y, z, tau = 1)
+leakyIV(obs, tau = 1)
+
+# With covariance matrix input
+S <- cov(obs)
+leakyIV(S, tau = 1)
+
 
 }
 \references{
+Friedman, J., Hastie, T., and Tibshirani, R. (2007). Sparse inverse 
+covariance estimation with the lasso. \emph{Biostatistics}, 9:432-441.
+
 Schäfer, J., and Strimmer, K. (2005). A shrinkage approach to large-scale 
 covariance estimation and implications for functional genomics. 
 \emph{Statist. Appl. Genet. Mol. Biol.}, 4:32.
-
-Friedman, J., Hastie, T., and Tibshirani, R. (2007). Sparse inverse 
-covariance estimation with the lasso. \emph{Biostatistics}, 9:432-441.
 
 Rubin, D.R. (1981). The Bayesian bootstrap. \emph{Ann. Statist.}, 
 \emph{9}(1): 130-134.

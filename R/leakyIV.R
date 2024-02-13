@@ -3,21 +3,20 @@
 #' Estimates bounds on average treatment effects in linear IV models under 
 #' limited violations of the exclusion criterion.
 #' 
-#' @param x Treatment variable. 
-#' @param y Outcome variable.
-#' @param z One or more leaky instrumental variable(s). 
+#' @param dat Input data. Either (a) an \eqn{n \times d} data frame or matrix of 
+#'   observations with columns for treatment, outcome, and candidate instruments; 
+#'   or (b) a \eqn{d \times d} covariance matrix over such variables. The latter 
+#'   is incompatible with bootstrapping. Note that in either case, the order of
+#'   variables is presumed to be treatment (\eqn{X}), outcome (\eqn{Y}), leaky 
+#'   instruments (\eqn{Z}).
 #' @param tau Either (a) a scalar representing the upper bound on the p-norm of 
-#'   linear weights from \code{z} to \code{y}; (b) a vector of length 
-#'   \code{ncol(z)} representing upper bounds on the absolute value of each such 
+#'   linear weights on \eqn{Z} in the structural equation for \eqn{Y}; or (b) a 
+#'   vector representing upper bounds on the absolute value of each such 
 #'   coefficient. See details.
-#' @param p Power of the norm on linear weights from \code{z} to \code{y} (only 
-#'   relevant if \code{tau} is scalar).
+#' @param p Power of the norm for the \code{tau} threshold. 
 #' @param method Estimator for the covariance matrix. Options include 
 #'   (a) \code{"mle"}, the default; (b) \code{"shrink"}, an analytic empirical 
 #'   Bayes solution; or (c) \code{"glasso"}, the graphical lasso. See details.
-#' @param Sigma Optional pre-computed covariance matrix for \code{x, y, z}.
-#'   If non-\code{NULL}, then \code{Sigma} overrides \code{method}. This is
-#'   incompatible with bootstrapping.
 #' @param n_boot Optional number of bootstrap replicates.
 #' @param bayes Use Bayesian bootstrap? 
 #' @param parallel Compute bootstrap estimates in parallel? Must register 
@@ -26,24 +25,24 @@
 #'   \code{method = "glasso"}. Note that the regularization parameter \code{rho}
 #'   is required as input, with no default. 
 #' 
+#' 
 #' @details 
 #' Instrumental variables are defined by three structural assumptions: they must
 #' be (A1) \emph{relevant}, i.e. associated with the treatment; (A2) 
 #' \emph{unconfounded}, i.e. independent of common causes between treatment and 
 #' outcome; and (A3) \emph{exclusive}, i.e. only affect outcomes through the 
 #' treatment. The \code{leakyIV} algorithm relaxes (A3), allowing some 
-#' information leakage from IVs \code{z} to outcomes \code{y} in linear 
-#' structural equation models. While the average treatment effect (ATE) is no 
-#' longer identifiable in this setting, tight bounds can be computed exactly for 
-#' scalar \code{tau} and approximately for vector \code{tau}. 
+#' information leakage from IVs \eqn{Z} to outcomes \eqn{Y} in linear systems. 
+#' While the average treatment effect (ATE) is no longer identifiable in this 
+#' setting, sharp bounds can be computed exactly in most cases. 
 #' 
-#' We assume the following structural equation for \code{x}: 
+#' We assume the following structural equation for \eqn{X}: 
 #' \eqn{X := Z \beta + \epsilon_X}, where the final summand is a noise term that
-#' correlates with the additive noise in the structural equation for \code{y}: 
+#' correlates with the additive noise in the structural equation for \eqn{Y}: 
 #' \eqn{Y := Z \gamma + X \theta + \epsilon_Y}. The ATE is given by the 
 #' parameter \eqn{\theta}. Whereas classical IV models require each \eqn{\gamma} 
-#' coefficient to be zero, we permit some direct signal from \code{z} to 
-#' \code{y}. Specifically, \code{leakyIV} provides support for two types of
+#' coefficient to be zero, we permit some direct signal from \eqn{Z} to 
+#' \eqn{Y}. Specifically, \code{leakyIV} provides support for two types of
 #' information leakage: (a) thresholding the p-norm of linear weights 
 #' \eqn{\gamma} (scalar \code{tau}); and (b) thresholding the absolute value of 
 #' each \eqn{\gamma} coefficient one by one (vector \code{tau}). 
@@ -55,38 +54,41 @@
 #' \code{glasso::\link[glasso]{glasso}} (Friedman et al., 2007). These latter 
 #' methods are preferable in high-dimensional settings where sample covariance 
 #' matrices may be unstable or singular. Alternatively, users can pass a 
-#' pre-computed covariance matrix via the \code{Sigma} argument.
+#' pre-computed covariance matrix directly as \code{dat}.
 #' 
 #' Uncertainty can be evaluated in leaky IV models using the bootstrap, provided
-#' that covariances are estimated internally and not passed directly via the 
-#' \code{Sigma} argument. Bootstrapping provides a nonparametric approximate
-#' posterior distribution for min/max values of the average treatment effect of 
-#' X on Y. Set \code{bayes = TRUE} to replace the classical bootstrap with a 
-#' Bayesian bootstrap (Rubin, 1981).
+#' that covariances are estimated internally and not passed directly. 
+#' Bootstrapping provides a nonparametric sampling distribution for min/max 
+#' values of the average treatment effect of \eqn{X} on \eqn{Y}. Set 
+#' \code{bayes = TRUE} to replace the classical bootstrap with a Bayesian 
+#' bootstrap for approximate posterior inference (Rubin, 1981).
+#' 
 #' 
 #' @return  
 #' A data frame with columns for \code{ATE_lo} and \code{ATE_hi}, representing
 #' lower and upper bounds of the partial identification interval for the 
-#' causal effect of \code{x} on \code{y}. When bootstrapping, the output data 
+#' causal effect of \eqn{X} on \eqn{Y}. When bootstrapping, the output data 
 #' frame contains \code{n_boot} rows, one for each bootstrap replicate. 
 #' 
+#' 
 #' @references  
+#' Friedman, J., Hastie, T., and Tibshirani, R. (2007). Sparse inverse 
+#' covariance estimation with the lasso. \emph{Biostatistics}, 9:432-441.
+#' 
 #' Schäfer, J., and Strimmer, K. (2005). A shrinkage approach to large-scale 
 #' covariance estimation and implications for functional genomics. 
 #' \emph{Statist. Appl. Genet. Mol. Biol.}, 4:32.
 #' 
-#' Friedman, J., Hastie, T., and Tibshirani, R. (2007). Sparse inverse 
-#' covariance estimation with the lasso. \emph{Biostatistics}, 9:432-441.
-#' 
 #' Rubin, D.R. (1981). The Bayesian bootstrap. \emph{Ann. Statist.}, 
 #' \emph{9}(1): 130-134. 
+#' 
 #' 
 #' @examples  
 #' set.seed(123)
 #' 
 #' # Hyperparameters
 #' n <- 200
-#' d_z <- 5
+#' d_z <- 4
 #' beta <- rep(1, d_z)
 #' gamma <- rep(0.1, d_z)
 #' theta <- 2
@@ -99,26 +101,29 @@
 #' 
 #' # Simulate observables from a leaky IV model
 #' z <- matrix(rnorm(n * d_z), ncol = d_z)
-#' x <- as.numeric(z %*% beta) + eps[, 1]
-#' y <- as.numeric(z %*% gamma) + x * theta + eps[, 2]
+#' x <- z %*% beta + eps[, 1]
+#' y <- z %*% gamma + x * theta + eps[, 2]
+#' obs <- cbind(x, y, z)
 #' 
 #' # Run the algorithm
-#' leakyIV(x, y, z, tau = 1)
+#' leakyIV(obs, tau = 1)
+#' 
+#' # With covariance matrix input
+#' S <- cov(obs)
+#' leakyIV(S, tau = 1)
+#' 
 #' 
 #' @export 
 #' @import data.table
-#' @importFrom corpcor is.positive.definite cov.shrink invcov.shrink
+#' @importFrom corpcor is.positive.definite cov.shrink 
 #' @importFrom glasso glasso
 #' @importFrom foreach foreach %do% %dopar%
 
 leakyIV <- function(
-    x,
-    y, 
-    z,
+    dat,
     tau, 
     p = 2, 
     method = "mle",
-    Sigma = NULL,
     n_boot = NULL, 
     bayes = FALSE, 
     parallel = TRUE, 
@@ -128,76 +133,69 @@ leakyIV <- function(
   bb <- rho <- sat <- NULL
   
   # Checks, warnings
-  if (is.matrix(z) || is.data.frame(z)) {
-    n_z <- nrow(z)
-    d_z <- ncol(z)
+  if (nrow(dat) == ncol(dat)) {
+    Sigma <- dat
+    if (!is.positive.definite(Sigma)) {
+      stop('Pre-computed covariance matrix must be positive definite.')
+    }
+    if (!is.null(n_boot)) {
+      if (n_boot > 0L) {
+        warning('Bootstrapping cannot be performed with covariance matrix input. ',
+                'Setting n_boot = 0.')
+        n_boot <- 0L
+      }
+    }
+    Sigma_input <- TRUE
   } else {
-    n_z <- length(z)
-    d_z <- 1L
+    dat <- as.data.frame(dat)
+    n <- nrow(dat)
+    w <- rep(1L, n)
+    Sigma_input <- FALSE
   }
-  d <- d_z + 2L
-  if (is.null(n_boot)) {
-    n_boot <- 0L
-    parallel <- FALSE
-  }
-  stopifnot(
-    is.numeric(z) || is.matrix(z) || is.data.frame(z),
-    is.numeric(x), is.numeric(y), is.numeric(tau), is.numeric(p), 
-    is.character(method), is.numeric(n_boot), is.logical(bayes), 
-    is.logical(parallel)
-  )
-  if (length(x) != n_z) {
-    stop('x and z must have the same number of samples.')
-  }
-  if (length(y) != n_z) {
-    stop('y and z must have the same number of samples.')
-  }
-  if (!length(tau) %in% c(1, d_z)) {
-    stop('tau must be either a scalar or a vector of length ncol(z).')
+  if (!length(tau) %in% c(1, ncol(dat) - 2L)) {
+    stop('tau must be either a scalar or a vector of length ncol(dat) - 2.')
   }
   if (any(tau < 0)) {
-    stop('tau must be strictly positive.')
+    stop('tau must be >= 0.')
   }
-  if (length(tau) == 1L) {
-    if (p < 0) {
-      stop('p must be >= 0.')
-    } else if (p < 1) {
-      warning('Exact solutions are only possible for p >= 1, using approximate ',
-              'methods instead.')
-    }
+  if (max(tau) == 0) {
+    stop('Some tau must be positive or else there is no information leakage. ',
+         'Consider using 2SLS instead.')
+  }
+  if (p < 0) {
+    stop('p must be >= 0.')
   }
   if (!method %in% c('mle', 'shrink', 'glasso')) {
     stop('method not recognized. Must be one of "mle", "shrink", or "glasso".')
   }
-  if (!is.null(Sigma)) {
-    if (ncol(Sigma) != d | nrow(Sigma) != d) {
-      stop('Pre-computed covariance matrix Sigma must have ncol(z) + 2 rows ',
-           'and ncol(z) + 2 columns.')
-    }
-    if (!is.positive.definite(Sigma)) {
-      stop('Pre-computed covariance matrix Sigma must be positive definite.')
-    }
+  if (is.null(n_boot)) {
+    n_boot <- 0L
+    parallel <- FALSE
   }
   
-  # Preliminaries
+  # Optionally prepare transition matrix
+  d <- ncol(dat)
+  d_z <- d - 2L
+  s0 <- NULL
+  t_matrix <- NULL
   if (length(tau) > 1L) {
-    z <- z / tau
-    if (!is.null(Sigma)) {
-      tau <- c(tau, 1L, 1L)
-      t_matrix <- matrix(nrow = d, ncol = d)
-      diag(t_matrix) <- 1 / tau^2
-      for (i in 2:d) {
-        for (j in 1:(i - 1L)) {
-          t_matrix[i, j] <- t_matrix[j, i] <- 1 / (tau[i] * tau[j])
-        }
+    if (any(tau == 0)) {
+      # Partition z into valid and leaky instruments
+      s0 <- which(tau == 0)
+      s1 <- which(tau != 0)
+      tau[s0] <- 1
+    }
+    tau <- c(1, 1, tau)
+    t_matrix <- matrix(nrow = d, ncol = d)
+    diag(t_matrix) <- 1 / tau^2
+    for (i in 2:d) {
+      for (j in 1:(i - 1L)) {
+        t_matrix[i, j] <- t_matrix[j, i] <- 1 / (tau[i] * tau[j])
       }
-      Sigma <- t_matrix * Sigma
     }
     tau <- 1L
+    #p <- Inf
   }
-  dat <- cbind(z, x, y)
-  n <- nrow(dat)
-  w <- rep(1L, n)
   
   # Bootstrap samples or weights
   if (n_boot > 0L) {
@@ -214,15 +212,15 @@ leakyIV <- function(
   # Compute bounds
   loop <- function(b) {
     
-    # Estimate covariance and precision matrices
-    if (is.null(Sigma)) {
-      if (b > 0L) {
-        if (isTRUE(bayes)) {
-          w <- w_mat[, b]
-        } else {
-          dat <- dat[b_mat[, b], ]
-        }
+    # Estimate covariance parameters
+    if (b > 0L) {
+      if (isTRUE(bayes)) {
+        w <- w_mat[, b]
+      } else {
+        dat <- dat[b_mat[, b], ]
       }
+    }
+    if (!isTRUE(Sigma_input)) {
       if (method == 'mle') {
         Sigma <- stats::cov.wt(dat, wt = w)$cov
       } else if (method == 'shrink') {
@@ -234,35 +232,71 @@ leakyIV <- function(
         #Theta_z <- s$wi[seq_len(d_z), seq_len(d_z)]
       }
     }
-    
-    # Extract other covariance parameters
-    Theta_z <- solve(Sigma[seq_len(d_z), seq_len(d_z)])
-    Sigma_zy <- matrix(Sigma[seq_len(d_z), d], ncol = 1L)
+    if (!is.null(t_matrix)) {
+      Sigma <- Sigma * t_matrix
+    }
+    Theta_z <- solve(Sigma[3:d, 3:d])
+    Sigma_zy <- matrix(Sigma[3:d, 2L], ncol = 1L)
     Sigma_yz <- t(Sigma_zy)
-    Sigma_zx <- matrix(Sigma[seq_len(d_z), d - 1L], ncol = 1L)
+    Sigma_zx <- matrix(Sigma[3:d, 1L], ncol = 1L)
     Sigma_xz <- t(Sigma_zx)
-    sigma_xy <- Sigma[d, d - 1L]
-    var_x <- Sigma[d - 1L, d - 1L]
-    var_y <- Sigma[d, d]
+    sigma_xy <- Sigma[1L, 2L]
+    var_x <- Sigma[1L, 1L]
+    var_y <- Sigma[2L, 2L]
     
-    # Our magic variables
-    eta_x2 <- var_x - as.numeric(Sigma_xz %*% Theta_z %*% Sigma_zx)
+    # Gamma is constrained to the hyperplane alpha - theta * beta
+    alpha <- as.numeric(Theta_z %*% Sigma_zy)
+    # alpha <- as.numeric(coef(lm(y ~ 0 + z)))
+    beta <- as.numeric(Theta_z %*% Sigma_zx)
+    # beta <- as.numeric(coef(lm(x ~ 0 + z)))
+    if (!is.null(s0)) {
+      alpha <- alpha[s1] 
+      beta <- beta[s1]
+    }
+    
+    # Conditional (co)variances given Z
+    k_xx <- var_x - as.numeric(Sigma_xz %*% Theta_z %*% Sigma_zx)
     k_yy <- var_y - as.numeric(Sigma_yz %*% Theta_z %*% Sigma_zy)
     k_xy <- sigma_xy - as.numeric(Sigma_xz %*% Theta_z %*% Sigma_zy)
-    if (any(c(eta_x2, k_yy) < 0)) {
-      warning('Covariance estimator implies negative conditional variance. ',
+    if (any(c(k_xx, k_yy) < 0) | k_xx * k_yy < k_xy^2) {
+      warning('Covariance estimator implies inconsistent parameters. ',
               'Consider rerunning with another method.')
       ATE_lo <- ATE_hi <- NA_real_
-    } else {
+    } else if (p == 2) { 
+      
+      # Exact solution in the L2 case
+      f <- lm(alpha ~ 0 + beta)
+      theta_star <- as.numeric(coef(f))
+      tau_star <- sqrt(sum(residuals(f)^2))
+      if (tau < tau_star) {
+        warning('tau is too low, resulting in an empty feasible region. ',
+                'Consider rerunning with a higher threshold.')
+        ATE_lo <- ATE_hi <- NA_real_
+      } else {
+        delta <- as.numeric((1 / (t(beta) %*% beta)) * 
+          sqrt(t(beta) %*% beta * (tau^2 - t(alpha) %*% alpha) + (alpha %*% beta)^2))
+        ATE_lo <- theta_star - delta
+        ATE_hi <- theta_star + delta
+      }
+      
+    } else { 
+      
+      # Numerical solution otherwise. Define some helper functions:
       # Compute theta as a function of rho 
       theta_fn <- function(rho) {
-        (k_xy - rho * (sqrt((eta_x2 * k_yy - k_xy^2) / (1 - rho^2)))) / eta_x2
+        (k_xy - sqrt(k_xx * k_yy - k_xy^2) * tan(asin(rho))) / k_xx
       }
       # Compute gamma norms as a function of rho
       norm_fn <- function(rho) {
         theta <- theta_fn(rho)
-        gamma <- as.numeric(Theta_z %*% (Sigma_zy - theta * Sigma_zx))
-        norm <- (sum(abs(gamma)^p))^(1 / p)
+        gamma <- alpha - theta * beta
+        if (p == 0L) {
+          norm <- sum(gamma != 0)
+        } else if (p == Inf) {
+          norm <- max(abs(gamma))
+        } else {
+          norm <- (sum(abs(gamma)^p))^(1 / p)
+        }
         return(norm)
       }
       # Compute loss as a function of rho
@@ -275,7 +309,8 @@ leakyIV <- function(
       # Find the split point: upper and lower bounds lie on either side of
       # rho_star, assuming tau > min_norm$value
       min_norm <- stats::optim(0, norm_fn, method = 'Brent', lower = -1, upper = 1)
-      if (tau < min_norm$value) {
+      tau_star <- min_norm$value
+      if (tau < tau_star) {
         warning('tau is too low, resulting in an empty feasible region. ',
                 'Consider rerunning with a higher threshold.')
         ATE_lo <- ATE_hi <- NA_real_
