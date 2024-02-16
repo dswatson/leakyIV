@@ -117,6 +117,7 @@
 #' @import data.table
 #' @importFrom corpcor is.positive.definite cov.shrink 
 #' @importFrom glasso glasso
+#' @importFrom stats rexp cov.wt optim
 #' @importFrom foreach foreach %do% %dopar%
 
 leakyIV <- function(
@@ -273,8 +274,8 @@ leakyIV <- function(
                 'Consider rerunning with a higher threshold.')
         ATE_lo <- ATE_hi <- NA_real_
       } else {
-        delta <- as.numeric((1 / (t(beta) %*% beta)) * 
-          sqrt(t(beta) %*% beta * (tau^2 - t(alpha) %*% alpha) + (alpha %*% beta)^2))
+        delta <- as.numeric((1 / crossprod(beta)) * 
+          sqrt(crossprod(beta) * (tau^2 - crossprod(alpha)) + crossprod(alpha, beta)^2))
         ATE_lo <- theta_star - delta
         ATE_hi <- theta_star + delta
       }
