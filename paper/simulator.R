@@ -52,7 +52,7 @@ sim_dat <- function(n, d_z, z_rho, rho, theta, snr_x, snr_y, pr_valid) {
   }
   lambda <- optim(1, fn, method = 'Brent', lower = -10, upper = 10)$par
   gamma <- gamma * lambda
-  var_mu <- as.numeric(t(gamma) %*% Sigma_z %*% (gamma)) + theta^2 * var_x + 
+  var_mu <- as.numeric(t(gamma) %*% Sigma_z %*% (gamma)) + theta^2 * var_x +
     2 * theta * as.numeric(beta %*% Sigma_z %*% (gamma))
   
   # Solve a quadratic equation for eta_y
@@ -72,7 +72,7 @@ sim_dat <- function(n, d_z, z_rho, rho, theta, snr_x, snr_y, pr_valid) {
 
 ################################################################################
 
-#' Sample data from the leaky IV model with var_x = var_y = 1
+#' Generate leakyIV covariance
 #' 
 #' This function simulates the covariance matrix of a linear SEM with some 
 #' leaky instrument(s).
@@ -119,8 +119,8 @@ sim_cov <- function(d_z, z_rho, rho, theta, snr_x, snr_y, pr_valid) {
   }
   lambda <- optim(1, fn, method = 'Brent', lower = -10, upper = 10)$par
   gamma <- gamma * lambda
-  var_mu <- as.numeric(t(gamma) %*% Sigma_z %*% (gamma)) + theta^2 * var_x + 
-    2 * theta * as.numeric(beta %*% Sigma_z %*% (gamma))
+  var_mu <- as.numeric(t(gamma) %*% Sigma_z %*% gamma) + theta^2 * var_x + 
+    2 * theta * as.numeric(beta %*% Sigma_z %*% gamma)
   
   # Solve a quadratic equation for eta_y, calculate Y's covariance with X, Z
   b <- 2 * theta * rho * eta_x
