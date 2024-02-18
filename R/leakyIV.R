@@ -261,9 +261,9 @@ leakyIV <- function(
     if (p == 2) {  # Exact solution in the L2 case
       
       f <- lm(alpha ~ 0 + beta)
-      theta_star <- as.numeric(coef(f))
-      tau_star <- sqrt(sum(residuals(f)^2))
-      if (tau < tau_star) {
+      theta_check <- as.numeric(coef(f))
+      tau_check <- sqrt(sum(residuals(f)^2))
+      if (tau < tau_check) {
         warning('tau is too low, resulting in an empty feasible region. ',
                 'Consider rerunning with a higher threshold.')
         ATE_lo <- ATE_hi <- NA_real_
@@ -272,8 +272,8 @@ leakyIV <- function(
           (1 / crossprod(beta)) * sqrt(crossprod(beta) * 
             (tau^2 - crossprod(alpha)) + (alpha %*% beta)^2)
         )
-        ATE_lo <- theta_star - delta
-        ATE_hi <- theta_star + delta
+        ATE_lo <- theta_check - delta
+        ATE_hi <- theta_check + delta
       }
       
     } else {       # Numerical solution otherwise
