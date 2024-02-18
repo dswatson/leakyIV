@@ -30,9 +30,10 @@ coefficient. See details.}
 
 \item{p}{Power of the norm for the \code{tau} threshold.}
 
-\item{method}{Estimator for the covariance matrix. Options include 
-(a) \code{"mle"}, the default; (b) \code{"shrink"}, an analytic empirical 
-Bayes solution; or (c) \code{"glasso"}, the graphical lasso. See details.}
+\item{method}{Estimator for the covariance matrix, if one is not supplied by
+\code{dat}. Options include (a) \code{"mle"}, the default; (b) \code{"shrink"}, 
+an analytic empirical Bayes solution; or (c) \code{"glasso"}, the graphical 
+lasso. See details.}
 
 \item{n_boot}{Optional number of bootstrap replicates.}
 
@@ -65,9 +66,9 @@ information leakage from IVs \eqn{Z} to outcomes \eqn{Y} in linear systems.
 While the average treatment effect (ATE) is no longer identifiable in this 
 setting, sharp bounds can be computed exactly in most cases. 
 
-We assume the following structural equation for \eqn{X}: 
+We assume the following structural equation for the treatment: 
 \eqn{X := Z \beta + \epsilon_X}, where the final summand is a noise term that
-correlates with the additive noise in the structural equation for \eqn{Y}: 
+correlates with the additive noise in the structural equation for the outcome: 
 \eqn{Y := Z \gamma + X \theta + \epsilon_Y}. The ATE is given by the 
 parameter \eqn{\theta}. Whereas classical IV models require each \eqn{\gamma} 
 coefficient to be zero, we permit some direct signal from \eqn{Z} to 
@@ -88,9 +89,8 @@ pre-computed covariance matrix directly as \code{dat}.
 Uncertainty can be evaluated in leaky IV models using the bootstrap, provided
 that covariances are estimated internally and not passed directly. 
 Bootstrapping provides a nonparametric sampling distribution for min/max 
-values of the average treatment effect of \eqn{X} on \eqn{Y}. Set 
-\code{bayes = TRUE} to replace the classical bootstrap with a Bayesian 
-bootstrap for approximate posterior inference (Rubin, 1981).
+values of the ATE. Set \code{bayes = TRUE} to replace the classical bootstrap 
+with a Bayesian bootstrap for approximate posterior inference (Rubin, 1981).
 }
 \examples{
  
@@ -117,6 +117,9 @@ obs <- cbind(x, y, z)
 
 # Run the algorithm
 leakyIV(obs, tau = 1)
+
+# With bootstrapping
+leakyIV(obs, tau = 1, n_boot = 10)
 
 # With covariance matrix input
 S <- cov(obs)

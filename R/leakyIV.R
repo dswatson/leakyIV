@@ -14,9 +14,10 @@
 #'   vector representing upper bounds on the absolute value of each such 
 #'   coefficient. See details.
 #' @param p Power of the norm for the \code{tau} threshold. 
-#' @param method Estimator for the covariance matrix. Options include 
-#'   (a) \code{"mle"}, the default; (b) \code{"shrink"}, an analytic empirical 
-#'   Bayes solution; or (c) \code{"glasso"}, the graphical lasso. See details.
+#' @param method Estimator for the covariance matrix, if one is not supplied by
+#'   \code{dat}. Options include (a) \code{"mle"}, the default; (b) \code{"shrink"}, 
+#'   an analytic empirical Bayes solution; or (c) \code{"glasso"}, the graphical 
+#'   lasso. See details.
 #' @param n_boot Optional number of bootstrap replicates.
 #' @param bayes Use Bayesian bootstrap? 
 #' @param parallel Compute bootstrap estimates in parallel? Must register 
@@ -36,9 +37,9 @@
 #' While the average treatment effect (ATE) is no longer identifiable in this 
 #' setting, sharp bounds can be computed exactly in most cases. 
 #' 
-#' We assume the following structural equation for \eqn{X}: 
+#' We assume the following structural equation for the treatment: 
 #' \eqn{X := Z \beta + \epsilon_X}, where the final summand is a noise term that
-#' correlates with the additive noise in the structural equation for \eqn{Y}: 
+#' correlates with the additive noise in the structural equation for the outcome: 
 #' \eqn{Y := Z \gamma + X \theta + \epsilon_Y}. The ATE is given by the 
 #' parameter \eqn{\theta}. Whereas classical IV models require each \eqn{\gamma} 
 #' coefficient to be zero, we permit some direct signal from \eqn{Z} to 
@@ -59,9 +60,8 @@
 #' Uncertainty can be evaluated in leaky IV models using the bootstrap, provided
 #' that covariances are estimated internally and not passed directly. 
 #' Bootstrapping provides a nonparametric sampling distribution for min/max 
-#' values of the average treatment effect of \eqn{X} on \eqn{Y}. Set 
-#' \code{bayes = TRUE} to replace the classical bootstrap with a Bayesian 
-#' bootstrap for approximate posterior inference (Rubin, 1981).
+#' values of the ATE. Set \code{bayes = TRUE} to replace the classical bootstrap 
+#' with a Bayesian bootstrap for approximate posterior inference (Rubin, 1981).
 #' 
 #' 
 #' @return  
@@ -107,6 +107,9 @@
 #' 
 #' # Run the algorithm
 #' leakyIV(obs, tau = 1)
+#' 
+#' # With bootstrapping
+#' leakyIV(obs, tau = 1, n_boot = 10)
 #' 
 #' # With covariance matrix input
 #' S <- cov(obs)
@@ -275,7 +278,7 @@ leakyIV <- function(
         ATE_lo <- ATE_hi <- NA_real_
       } else {
         delta <- as.numeric((1 / crossprod(beta)) * 
-          sqrt(crossprod(beta) * (tau^2 - crossprod(alpha)) + crossprod(alpha, beta)^2))
+          sqrt(crossprod(beta) * (tau^2 - crossprod(alpha)) + (alpha %*% beta)^2))
         ATE_lo <- theta_star - delta
         ATE_hi <- theta_star + delta
       }
