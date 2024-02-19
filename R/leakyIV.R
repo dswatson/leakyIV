@@ -263,7 +263,7 @@ leakyIV <- function(
       f <- lm(alpha ~ 0 + beta)
       theta_check <- as.numeric(coef(f))
       tau_check <- sqrt(sum(residuals(f)^2))
-      if (tau < tau_check) {
+      if (tau <= tau_check) {
         warning('tau is too low, resulting in an empty feasible region. ',
                 'Consider rerunning with a higher threshold.')
         ATE_lo <- ATE_hi <- NA_real_
@@ -316,7 +316,7 @@ leakyIV <- function(
         # rho_check, assuming tau > tau_check = min_norm$value
         min_norm <- stats::optim(0, norm_fn, method = 'Brent', lower = -1, upper = 1)
         tau_check <- min_norm$value
-        if (tau < tau_check) {
+        if (tau <= tau_check) {
           warning('tau is too low, resulting in an empty feasible region. ',
                   'Consider rerunning with a higher threshold.')
           ATE_lo <- ATE_hi <- NA_real_
@@ -351,6 +351,7 @@ leakyIV <- function(
   
   # Export
   return(out)
+  
 }
 
 
