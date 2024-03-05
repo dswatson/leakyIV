@@ -35,7 +35,7 @@
 #' treatment. The \code{leakyIV} algorithm relaxes (A3), allowing some 
 #' information leakage from IVs \eqn{Z} to outcomes \eqn{Y} in linear systems. 
 #' While the average treatment effect (ATE) is no longer identifiable in this 
-#' setting, sharp bounds can be computed exactly in most cases. 
+#' setting, sharp bounds can be computed exactly. 
 #' 
 #' We assume the following structural equation for the treatment: 
 #' \eqn{X := Z \beta + \epsilon_X}, where the final summand is a noise term that
@@ -239,96 +239,102 @@ leakyIV <- function(
     if (!is.null(t_matrix)) {
       Sigma <- Sigma * t_matrix
     }
-    Theta_z <- solve(Sigma[3:d, 3:d])
-    Sigma_zy <- matrix(Sigma[3:d, 2L], ncol = 1L)
-    Sigma_yz <- t(Sigma_zy)
-    Sigma_zx <- matrix(Sigma[3:d, 1L], ncol = 1L)
-    Sigma_xz <- t(Sigma_zx)
-    sigma_xy <- Sigma[1L, 2L]
-    var_x <- Sigma[1L, 1L]
-    var_y <- Sigma[2L, 2L]
-    
-    # Gamma is constrained to the hyperplane alpha - theta * beta
-    alpha <- as.numeric(Theta_z %*% Sigma_zy)
-    # alpha <- as.numeric(coef(lm(y ~ 0 + z)))
-    beta <- as.numeric(Theta_z %*% Sigma_zx)
-    # beta <- as.numeric(coef(lm(x ~ 0 + z)))
-    if (!is.null(s0)) {
-      alpha <- alpha[s1] 
-      beta <- beta[s1]
-    }
-    
-    if (p == 2) {  # Exact solution in the L2 case
+    if (!is.positive.definite(Sigma[3:d, 3:d])) {
+      warning('Covariance estimator results in a singular matrix. ',
+              'Consider rerunning with another method.')
+      ATE_lo <- ATE_hi <- NA_real_
+    } else {
+      Theta_z <- solve(Sigma[3:d, 3:d])
+      Sigma_zy <- matrix(Sigma[3:d, 2L], ncol = 1L)
+      Sigma_yz <- t(Sigma_zy)
+      Sigma_zx <- matrix(Sigma[3:d, 1L], ncol = 1L)
+      Sigma_xz <- t(Sigma_zx)
+      sigma_xy <- Sigma[1L, 2L]
+      var_x <- Sigma[1L, 1L]
+      var_y <- Sigma[2L, 2L]
       
-      f <- lm(alpha ~ 0 + beta)
-      theta_check <- as.numeric(coef(f))
-      tau_check <- sqrt(sum(residuals(f)^2))
-      if (tau <= tau_check) {
-        warning('tau is too low, resulting in an empty feasible region. ',
-                'Consider rerunning with a higher threshold.')
-        ATE_lo <- ATE_hi <- NA_real_
-      } else {
-        delta <- as.numeric(
-          (1 / crossprod(beta)) * sqrt(crossprod(beta) * 
-            (tau^2 - crossprod(alpha)) + (alpha %*% beta)^2)
-        )
-        ATE_lo <- theta_check - delta
-        ATE_hi <- theta_check + delta
+      # Gamma is constrained to the hyperplane alpha - theta * beta
+      alpha <- as.numeric(Theta_z %*% Sigma_zy)
+      # alpha <- as.numeric(coef(lm(y ~ 0 + z)))
+      beta <- as.numeric(Theta_z %*% Sigma_zx)
+      # beta <- as.numeric(coef(lm(x ~ 0 + z)))
+      if (!is.null(s0)) {
+        alpha <- alpha[s1] 
+        beta <- beta[s1]
       }
       
-    } else {       # Numerical solution otherwise
-      
-      # Conditional (co)variances given Z
-      k_xx <- var_x - as.numeric(Sigma_xz %*% Theta_z %*% Sigma_zx)
-      k_yy <- var_y - as.numeric(Sigma_yz %*% Theta_z %*% Sigma_zy)
-      k_xy <- sigma_xy - as.numeric(Sigma_xz %*% Theta_z %*% Sigma_zy)
-      if (any(c(k_xx, k_yy) < 0) | k_xx * k_yy < k_xy^2) {
-        warning('Covariance estimator implies inconsistent parameters. ',
-                'Consider rerunning with another method.')
-        ATE_lo <- ATE_hi <- NA_real_
-      } else {     # Define some helper functions
-         
-        # Compute theta as a function of rho
-        theta_fn <- function(rho) {
-          (k_xy - sqrt(k_xx * k_yy - k_xy^2) * tan(asin(rho))) / k_xx
-        }
-        # Compute gamma norms as a function of rho
-        norm_fn <- function(rho) {
-          theta <- theta_fn(rho)
-          gamma <- alpha - theta * beta
-          if (p == 0L) {
-            norm <- sum(gamma != 0)
-          } else if (p == Inf) {
-            norm <- max(abs(gamma))
-          } else {
-            norm <- (sum(abs(gamma)^p))^(1 / p)
-          }
-          return(norm)
-        }
-        # Compute loss as a function of rho
-        loss_fn <- function(rho) {
-          norm <- norm_fn(rho)
-          loss <- (tau - norm)^2
-          return(loss)
-        }
+      if (p == 2) {  # Exact solution in the L2 case
         
-        # Find the split point: upper and lower bounds lie on either side of
-        # rho_check, assuming tau > tau_check = min_norm$value
-        min_norm <- stats::optim(0, norm_fn, method = 'Brent', lower = -1, upper = 1)
-        tau_check <- min_norm$value
+        f <- lm(alpha ~ 0 + beta)
+        theta_check <- as.numeric(coef(f))
+        tau_check <- sqrt(sum(residuals(f)^2))
         if (tau <= tau_check) {
           warning('tau is too low, resulting in an empty feasible region. ',
                   'Consider rerunning with a higher threshold.')
           ATE_lo <- ATE_hi <- NA_real_
         } else {
-          rho_check <- min_norm$par
-          rho_lo <- stats::optim(mean(c(-1, rho_check)), loss_fn, method = 'Brent', 
-                                 lower = -1, upper = rho_check)$par
-          rho_hi <- stats::optim(mean(c(rho_check, 1)), loss_fn, method = 'Brent', 
-                                 lower = rho_check, upper = 1)$par
-          ATE_lo <- theta_fn(rho_hi)
-          ATE_hi <- theta_fn(rho_lo)
+          delta <- as.numeric(
+            sqrt(crossprod(beta) * (tau^2 - crossprod(alpha)) + (alpha %*% beta)^2) / 
+              crossprod(beta)
+          )
+          ATE_lo <- theta_check - delta
+          ATE_hi <- theta_check + delta
+        }
+        
+      } else {       # Numerical solution otherwise
+        
+        # Conditional (co)variances given Z
+        k_xx <- var_x - as.numeric(Sigma_xz %*% Theta_z %*% Sigma_zx)
+        k_yy <- var_y - as.numeric(Sigma_yz %*% Theta_z %*% Sigma_zy)
+        k_xy <- sigma_xy - as.numeric(Sigma_xz %*% Theta_z %*% Sigma_zy)
+        if (any(c(k_xx, k_yy) < 0) | k_xx * k_yy < k_xy^2) {
+          warning('Covariance estimator implies inconsistent parameters. ',
+                  'Consider rerunning with another method.')
+          ATE_lo <- ATE_hi <- NA_real_
+        } else {     # Define some helper functions
           
+          # Compute theta as a function of rho
+          theta_fn <- function(rho) {
+            (k_xy - sqrt(k_xx * k_yy - k_xy^2) * tan(asin(rho))) / k_xx
+          }
+          # Compute gamma norms as a function of rho
+          norm_fn <- function(rho) {
+            theta <- theta_fn(rho)
+            gamma <- alpha - theta * beta
+            if (p == 0L) {
+              norm <- sum(gamma != 0)
+            } else if (p == Inf) {
+              norm <- max(abs(gamma))
+            } else {
+              norm <- (sum(abs(gamma)^p))^(1 / p)
+            }
+            return(norm)
+          }
+          # Compute loss as a function of rho
+          loss_fn <- function(rho) {
+            norm <- norm_fn(rho)
+            loss <- (tau - norm)^2
+            return(loss)
+          }
+          
+          # Find the split point: upper and lower bounds lie on either side of
+          # rho_check, assuming tau > tau_check = min_norm$value
+          min_norm <- stats::optim(0, norm_fn, method = 'Brent', lower = -1, upper = 1)
+          tau_check <- min_norm$value
+          if (tau <= tau_check) {
+            warning('tau is too low, resulting in an empty feasible region. ',
+                    'Consider rerunning with a higher threshold.')
+            ATE_lo <- ATE_hi <- NA_real_
+          } else {
+            rho_check <- min_norm$par
+            rho_lo <- stats::optim(mean(c(-1, rho_check)), loss_fn, method = 'Brent', 
+                                   lower = -1, upper = rho_check)$par
+            rho_hi <- stats::optim(mean(c(rho_check, 1)), loss_fn, method = 'Brent', 
+                                   lower = rho_check, upper = 1)$par
+            ATE_lo <- theta_fn(rho_hi)
+            ATE_hi <- theta_fn(rho_lo)
+            
+          }
         }
       }
     }

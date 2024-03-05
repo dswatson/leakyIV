@@ -64,7 +64,7 @@ outcome; and (A3) \emph{exclusive}, i.e. only affect outcomes through the
 treatment. The \code{leakyIV} algorithm relaxes (A3), allowing some 
 information leakage from IVs \eqn{Z} to outcomes \eqn{Y} in linear systems. 
 While the average treatment effect (ATE) is no longer identifiable in this 
-setting, sharp bounds can be computed exactly in most cases. 
+setting, sharp bounds can be computed exactly. 
 
 We assume the following structural equation for the treatment: 
 \eqn{X := Z \beta + \epsilon_X}, where the final summand is a noise term that
