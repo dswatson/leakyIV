@@ -43,11 +43,11 @@ backend beforehand, e.g. via \code{doParallel}.}
 is required as input, with no default.}
 }
 \value{
-Either a scalar representing the Monte Carlo p-value of the exclusion test,
-(default) or, if \code{return_stats = TRUE}, a named list with three entries: 
-\code{psi}, the observed statistic; \code{psi0}, a vector of length 
+Either a scalar representing the Monte Carlo \emph{p}-value of the exclusion 
+test (default) or, if \code{return_stats = TRUE}, a named list with three 
+entries: \code{psi}, the observed statistic; \code{psi0}, a vector of length 
 \code{n_sim} with simulated null statistics; and \code{p_value}, the 
-resulting p-value.
+resulting \emph{p}-value.
 }
 \description{
 Performs a Monte Carlo test against the null hypothesis that minimum leakage
@@ -67,7 +67,7 @@ between the vectors for Cov(\eqn{Z, X}) and Cov(\eqn{Z, Y}). Our test
 statistic is the determinant of the cross product of these vectors, which 
 equals zero if and only if the null hypothesis is true. We generate a null
 distribution by simulating from the null covariance matrix and compute a
-p-value by estimating the proportion of statistics that exceed the observed
+\emph{p}-value by estimating the proportion of statistics that exceed the observed
 value. Future releases will provide support for a wider range of data 
 generating processes.
 
