@@ -1,7 +1,7 @@
 Package: leakyIV
 Title: Leaky Instrumental Variables
 Version: 0.0.1
-Date: 2024-02-04
+Date: 2024-03-29
 Authors@R: 
       person(given = 'David S.',
              family = 'Watson',
@@ -11,14 +11,14 @@ Authors@R:
 Maintainer: David S. Watson <david.s.watson11@gmail.com>
 Description: Instrumental variables (IVs) are a popular and powerful tool for 
   estimating causal effects in the presence of unobserved confounding. However, 
-  classical methods rely on strong, untestable assumptions such as the exclusion
-  criterion, which states that instrumental effects must be entirely mediated by 
+  classical methods rely on strong assumptions such as the exclusion criterion,
+  which states that instrumental effects must be entirely mediated by 
   treatments. In the so-called "leaky" IV setting, candidate instruments are
   allowed to have some direct influence on outcomes, rendering the average 
   treatment effect (ATE) unidentifiable. But with limits on the amount of 
-  information leakage, we may still recover a partial identification interval 
-  for the ATE. This package implements methods for ATE bounding in the leaky 
-  IV setting with linear structural equations.
+  information leakage, we may still recover sharp bounds on the ATE, providing
+  partial identification. This package implements methods for ATE bounding in 
+  the leaky IV setting with linear structural equations.
 License: GPL (>= 3)
 URL: https://github.com/dswatson/leakyIV
 BugReports: https://github.com/dswatson/leakyIV/issues
@@ -26,6 +26,8 @@ Imports:
     data.table,
     corpcor,
     glasso,
+    Matrix,
+    mvnfast,
     foreach
 Encoding: UTF-8
 RoxygenNote: 7.3.1
