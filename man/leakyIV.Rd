@@ -8,7 +8,9 @@ leakyIV(
   dat,
   tau,
   p = 2,
+  normalize = TRUE,
   method = "mle",
+  approx = TRUE,
   n_boot = NULL,
   bayes = FALSE,
   parallel = TRUE,
@@ -30,10 +32,15 @@ coefficient. See details.}
 
 \item{p}{Power of the norm for the \code{tau} threshold.}
 
+\item{normalize}{Scale candidate instruments to unit variance?}
+
 \item{method}{Estimator for the covariance matrix, if one is not supplied by
 \code{dat}. Options include (a) \code{"mle"}, the default; (b) \code{"shrink"}, 
 an analytic empirical Bayes solution; or (c) \code{"glasso"}, the graphical 
 lasso. See details.}
+
+\item{approx}{Use nearest positive definite approximation if the estimated 
+covariance matrix is singular? See details.}
 
 \item{n_boot}{Optional number of bootstrap replicates.}
 
@@ -86,6 +93,12 @@ methods are preferable in high-dimensional settings where sample covariance
 matrices may be unstable or singular. Alternatively, users can pass a 
 pre-computed covariance matrix directly as \code{dat}.
 
+Estimated covariance matrices may be singular for some datasets or bootstrap
+samples. Behavior in this case is determined by the \code{approx} argument. 
+If \code{TRUE}, \code{leakyIV} proceeds with the nearest positive definite 
+approximation, computed via Higham's (2002) algorithm (with a warning). If 
+\code{FALSE}, bounds are NA (also with a warning).
+
 Uncertainty can be evaluated in leaky IV models using the bootstrap, provided
 that covariances are estimated internally and not passed directly. 
 Bootstrapping provides a nonparametric sampling distribution for min/max 
@@ -134,6 +147,9 @@ covariance estimation with the lasso. \emph{Biostatistics}, 9:432-441.
 Schäfer, J., and Strimmer, K. (2005). A shrinkage approach to large-scale 
 covariance estimation and implications for functional genomics. 
 \emph{Statist. Appl. Genet. Mol. Biol.}, 4:32.
+
+Higham, N. (2002). Computing the nearest correlation matrix: A problem from 
+finance. \emph{IMA J. Numer. Anal.}, 22:329–343.
 
 Rubin, D.R. (1981). The Bayesian bootstrap. \emph{Ann. Statist.}, 
 \emph{9}(1): 130-134.

@@ -13,11 +13,14 @@
 #'   linear weights on \eqn{Z} in the structural equation for \eqn{Y}; or (b) a 
 #'   vector representing upper bounds on the absolute value of each such 
 #'   coefficient. See details.
-#' @param p Power of the norm for the \code{tau} threshold. 
+#' @param p Power of the norm for the \code{tau} threshold.
+#' @param normalize Scale candidate instruments to unit variance? 
 #' @param method Estimator for the covariance matrix, if one is not supplied by
 #'   \code{dat}. Options include (a) \code{"mle"}, the default; (b) \code{"shrink"}, 
 #'   an analytic empirical Bayes solution; or (c) \code{"glasso"}, the graphical 
 #'   lasso. See details.
+#' @param approx Use nearest positive definite approximation if the estimated 
+#'   covariance matrix is singular? See details.
 #' @param n_boot Optional number of bootstrap replicates.
 #' @param bayes Use Bayesian bootstrap? 
 #' @param parallel Compute bootstrap estimates in parallel? Must register 
@@ -57,6 +60,12 @@
 #' matrices may be unstable or singular. Alternatively, users can pass a 
 #' pre-computed covariance matrix directly as \code{dat}.
 #' 
+#' Estimated covariance matrices may be singular for some datasets or bootstrap
+#' samples. Behavior in this case is determined by the \code{approx} argument. 
+#' If \code{TRUE}, \code{leakyIV} proceeds with the nearest positive definite 
+#' approximation, computed via Higham's (2002) algorithm (with a warning). If 
+#' \code{FALSE}, bounds are NA (also with a warning).
+#' 
 #' Uncertainty can be evaluated in leaky IV models using the bootstrap, provided
 #' that covariances are estimated internally and not passed directly. 
 #' Bootstrapping provides a nonparametric sampling distribution for min/max 
@@ -78,6 +87,9 @@
 #' Schäfer, J., and Strimmer, K. (2005). A shrinkage approach to large-scale 
 #' covariance estimation and implications for functional genomics. 
 #' \emph{Statist. Appl. Genet. Mol. Biol.}, 4:32.
+#' 
+#' Higham, N. (2002). Computing the nearest correlation matrix: A problem from 
+#' finance. \emph{IMA J. Numer. Anal.}, 22:329–343.
 #' 
 #' Rubin, D.R. (1981). The Bayesian bootstrap. \emph{Ann. Statist.}, 
 #' \emph{9}(1): 130-134. 
@@ -120,14 +132,17 @@
 #' @import data.table
 #' @importFrom corpcor is.positive.definite cov.shrink 
 #' @importFrom glasso glasso
-#' @importFrom stats rexp cov.wt optim
+#' @importFrom stats rexp cov.wt optim lm coef residuals
+#' @importFrom Matrix nearPD
 #' @importFrom foreach foreach %do% %dopar%
 
 leakyIV <- function(
     dat,
     tau, 
     p = 2, 
+    normalize = TRUE,
     method = "mle",
+    approx = TRUE,
     n_boot = NULL, 
     bayes = FALSE, 
     parallel = TRUE, 
@@ -156,7 +171,7 @@ leakyIV <- function(
     w <- rep(1L, n)
     Sigma_input <- FALSE
   }
-  if (!length(tau) %in% c(1, ncol(dat) - 2L)) {
+  if (!length(tau) %in% c(1L, ncol(dat) - 2L)) {
     stop('tau must be either a scalar or a vector of length ncol(dat) - 2.')
   }
   if (any(tau < 0)) {
@@ -169,7 +184,11 @@ leakyIV <- function(
   if (p < 0) {
     stop('p must be >= 0.')
   }
-  if (!method %in% c('mle', 'shrink', 'glasso')) {
+  if (p > 0 & p < 1) {
+    warning('Norms with p < 1 are improper and non-convex. ',
+            'Interpret results with caution.')
+  }
+  if (!isTRUE(Sigma_input) & !method %in% c('mle', 'shrink', 'glasso')) {
     stop('method not recognized. Must be one of "mle", "shrink", or "glasso".')
   }
   if (is.null(n_boot)) {
@@ -198,7 +217,7 @@ leakyIV <- function(
       }
     }
     tau <- 1L
-    #p <- Inf
+    p <- Inf
   }
   
   # Bootstrap samples or weights
@@ -236,14 +255,32 @@ leakyIV <- function(
         #Theta_z <- s$wi[seq_len(d_z), seq_len(d_z)]
       }
     }
-    if (!is.null(t_matrix)) {
+    # Optionally normalize 
+    if (isTRUE(normalize)) {
+      fctr <- c(1, 1, 1/sqrt(diag(Sigma[3:d, 3:d])))
+      f_matrix <- matrix(nrow = d, ncol = d)
+      for (i in seq_len(d)) {
+        for (j in 1:i) {
+          f_matrix[i, j] <- f_matrix[j, i] <- fctr[i] * fctr[j]
+        }
+      }
+      Sigma <- Sigma * f_matrix
+    }
+    if (!is.null(t_matrix)) { # For vector tau
       Sigma <- Sigma * t_matrix
     }
-    if (!is.positive.definite(Sigma[3:d, 3:d])) {
+    # Check for singularity
+    if (!is.positive.definite(Sigma) & !isTRUE(approx)) {
       warning('Covariance estimator results in a singular matrix. ',
-              'Consider rerunning with another method.')
+              'Consider rerunning with another method or setting approx = TRUE.')
       ATE_lo <- ATE_hi <- NA_real_
     } else {
+      if (!is.positive.definite(Sigma) & isTRUE(approx)) {
+        warning('Covariance estimator results in a singular matrix. ',
+                'Substituting nearest positive definite approximation.')
+        Sigma <- as.matrix(nearPD(Sigma)$mat)
+      }
+      # Moving on...
       Theta_z <- solve(Sigma[3:d, 3:d])
       Sigma_zy <- matrix(Sigma[3:d, 2L], ncol = 1L)
       Sigma_yz <- t(Sigma_zy)
@@ -252,7 +289,6 @@ leakyIV <- function(
       sigma_xy <- Sigma[1L, 2L]
       var_x <- Sigma[1L, 1L]
       var_y <- Sigma[2L, 2L]
-      
       # Gamma is constrained to the hyperplane alpha - theta * beta
       alpha <- as.numeric(Theta_z %*% Sigma_zy)
       # alpha <- as.numeric(coef(lm(y ~ 0 + z)))
@@ -265,9 +301,9 @@ leakyIV <- function(
       
       if (p == 2) {  # Exact solution in the L2 case
         
-        f <- lm(alpha ~ 0 + beta)
-        theta_check <- as.numeric(coef(f))
-        tau_check <- sqrt(sum(residuals(f)^2))
+        f <- stats::lm(alpha ~ 0 + beta)
+        theta_check <- as.numeric(stats::coef(f))
+        tau_check <- sqrt(sum(stats::residuals(f)^2))
         if (tau <= tau_check) {
           warning('tau is too low, resulting in an empty feasible region. ',
                   'Consider rerunning with a higher threshold.')
