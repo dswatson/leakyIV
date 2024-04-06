@@ -20,7 +20,8 @@ exclusion_test(
 observations with columns for treatment, outcome, and candidate instruments; 
 or (b) a \eqn{d \times d} covariance matrix over such variables. Note that 
 in either case, the order of variables is presumed to be treatment 
-(\eqn{X}), outcome (\eqn{Y}), leaky instruments (\eqn{Z}).}
+(\eqn{X}), outcome (\eqn{Y}), leaky instruments (\eqn{Z}). 
+\code{exclusion_test} requires at least two candidate instruments \eqn{Z}.}
 
 \item{normalize}{Scale candidate instruments to unit variance?}
 
@@ -67,7 +68,7 @@ between the vectors for Cov(\eqn{Z, X}) and Cov(\eqn{Z, Y}). Our test
 statistic is the determinant of the cross product of these vectors, which 
 equals zero if and only if the null hypothesis is true. We generate a null
 distribution by simulating from the null covariance matrix and compute a
-\emph{p}-value by estimating the proportion of statistics that exceed the observed
+*p*-value by estimating the proportion of statistics that exceed the observed
 value. Future releases will provide support for a wider range of data 
 generating processes.
 

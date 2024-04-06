@@ -47,7 +47,7 @@
 #' parameter \eqn{\theta}. Whereas classical IV models require each \eqn{\gamma} 
 #' coefficient to be zero, we permit some direct signal from \eqn{Z} to 
 #' \eqn{Y}. Specifically, \code{leakyIV} provides support for two types of
-#' information leakage: (a) thresholding the p-norm of linear weights 
+#' information leakage: (a) thresholding the *p*-norm of linear weights 
 #' \eqn{\gamma} (scalar \code{tau}); and (b) thresholding the absolute value of 
 #' each \eqn{\gamma} coefficient one by one (vector \code{tau}). 
 #' 

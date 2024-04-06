@@ -7,7 +7,8 @@
 #'   observations with columns for treatment, outcome, and candidate instruments; 
 #'   or (b) a \eqn{d \times d} covariance matrix over such variables. Note that 
 #'   in either case, the order of variables is presumed to be treatment 
-#'   (\eqn{X}), outcome (\eqn{Y}), leaky instruments (\eqn{Z}).
+#'   (\eqn{X}), outcome (\eqn{Y}), leaky instruments (\eqn{Z}). 
+#'   \code{exclusion_test} requires at least two candidate instruments \eqn{Z}.
 #' @param normalize Scale candidate instruments to unit variance?
 #' @param method Estimator for the covariance matrix. Options include 
 #'   (a) \code{"mle"}, the default; (b) \code{"shrink"}, an analytic empirical 
@@ -37,7 +38,7 @@
 #' statistic is the determinant of the cross product of these vectors, which 
 #' equals zero if and only if the null hypothesis is true. We generate a null
 #' distribution by simulating from the null covariance matrix and compute a
-#' \emph{p}-value by estimating the proportion of statistics that exceed the observed
+#' *p*-value by estimating the proportion of statistics that exceed the observed
 #' value. Future releases will provide support for a wider range of data 
 #' generating processes.
 #' 
@@ -143,6 +144,9 @@ exclusion_test <- function(
     stop('method not recognized. Must be one of "mle", "shrink", or "glasso".')
   }
   d <- ncol(dat)
+  if (d <= 3L) {
+    stop('exclusion_test requires at least two candidate instruments.')
+  }
   
   # Compute covariance
   cov_fn <- function(input_data) {
