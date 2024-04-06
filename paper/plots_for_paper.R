@@ -279,10 +279,8 @@ bnchmrk <- function(d_z, z_rho, rho, snr_x, snr_y, pr_valid, n, n_sim) {
     
     # Export
     out <- data.table(b,
-      method = c('Backdoor', 'TSLS', 'sisVIVE', 'MBE', 'Bayes_lo', 'Bayes_hi', 
-                 'leaky_lo', 'leaky_hi'),
-      theta = c(ate_bda, ate_2sls, ate_sisvive, ate_mbe, ate_bb_lo, ate_bb_hi,
-                ate_leaky_lo, ate_leaky_hi)
+      method = c('Backdoor', 'TSLS', 'sisVIVE', 'MBE', 'leaky_lo', 'leaky_hi'),
+      theta = c(ate_bda, ate_2sls, ate_sisvive, ate_mbe, ate_leaky_lo, ate_leaky_hi)
     )
     return(out)
   }
@@ -376,8 +374,8 @@ bayes_bnchmrk <- function(rho, n) {
     m = 2000, dat = as.matrix(dat), pos_z = 3:d, pos_x = 1,
     pos_y = 2, prop_var = 0.01, lvar_z_mu = -1, lvar_z_var = 3,
     beta_var = 5, pre_gamma_var = 5, theta_var = 5, 
-    lvar_error_mu = -1, lvar_error_var = 5, tau = tau, alpha = 0.05
-  )
+    lvar_error_mu = -1, lvar_error_var = 5, tau = sqrt(tau), alpha = 0.05
+  ) # The sqrt is because this is parameterized for squared Euclidean distance
   
   # LeakyIV
   suppressWarnings(
