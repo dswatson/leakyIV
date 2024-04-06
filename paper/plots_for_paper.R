@@ -272,7 +272,7 @@ bnchmrk <- function(d_z, z_rho, rho, snr_x, snr_y, pr_valid, n, n_sim) {
     
     # LeakyIV
     suppressWarnings(
-      ate_leaky <- leakyIV(tmp, tau = tau, method = 'mle')
+      ate_leaky <- leakyIV(tmp, tau = tau, method = 'mle', normalize = FALSE)
     )
     ate_leaky_lo <- ate_leaky$ATE_lo
     ate_leaky_hi <- ate_leaky$ATE_hi
@@ -379,7 +379,7 @@ bayes_bnchmrk <- function(rho, n) {
   
   # LeakyIV
   suppressWarnings(
-    ate_bnds <- leakyIV(dat, tau = tau, method = 'mle')
+    ate_bnds <- leakyIV(dat, tau = tau, method = 'mle', normalize = FALSE)
   )
   
   # Export
@@ -524,7 +524,7 @@ cover <- function(d_z, rho, snr_x, snr_y, alpha, n, b) {
   Sigma <- sim$Sigma
   l2 <- sqrt(sum(sim$params$gamma^2))
   tau <- 1.1 * l2
-  S_oracle <- leakyIV(Sigma, tau)
+  S_oracle <- leakyIV(Sigma, tau, normalize = FALSE)
   o_lo <- S_oracle$ATE_lo
   o_hi <- S_oracle$ATE_hi
   
@@ -540,7 +540,7 @@ cover <- function(d_z, rho, snr_x, snr_y, alpha, n, b) {
   # Estimate bounds and quantiles
   pr <- c(alpha/2, 1 - alpha/2)
   suppressWarnings(
-    res <- leakyIV(dat, tau, n_boot = 2000, parallel = FALSE)
+    res <- leakyIV(dat, tau, n_boot = 2000, parallel = FALSE, normalize = FALSE)
   )
   qf_lo <- quantile(res$ATE_lo, probs = pr, na.rm = TRUE)
   qf_hi <- quantile(res$ATE_hi, probs = pr, na.rm = TRUE)
