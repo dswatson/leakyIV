@@ -391,7 +391,7 @@ bayes_bnchmrk <- function(rho, n) {
   return(out)
   
 }
-set.seed(222)
+set.seed(42)
 df <- foreach(rr = c(-0.75, -0.5, -0.25, 0.25, 0.5, 0.75), 
               .combine = rbind) %dopar% bayes_bnchmrk(rr, n = 1000)
 
