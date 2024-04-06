@@ -38,9 +38,9 @@
 #' statistic is the determinant of the cross product of these vectors, which 
 #' equals zero if and only if the null hypothesis is true. We generate a null
 #' distribution by simulating from the null covariance matrix and compute a
-#' *p*-value by estimating the proportion of statistics that exceed the observed
-#' value. Future releases will provide support for a wider range of data 
-#' generating processes.
+#' \emph{p}-value by estimating the proportion of statistics that exceed the 
+#' observed value. Future releases will provide support for a wider range of 
+#' data generating processes.
 #' 
 #' Numerous methods exist for estimating covariance matrices. \code{exclusion_test}
 #' provides support for maximum likelihood estimation (the default), as well as
