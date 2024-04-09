@@ -60,7 +60,7 @@ The classic linear instrumental variable (IV) model relies on the
 direct effect on the outcome \eqn{Y}, but can only influence it through the
 treatment \eqn{X}. This implies a series of tetrad constraints that can be
 directly tested, given a model for sampling data from the covariance matrix 
-of the observable variables. 
+of the observable variables (Watson et al., 2024). 
 
 We assume that data are multivariate normal and impose the null hypothesis
 by modifying the estimated covariance matrix to induce a linear dependence
@@ -115,6 +115,10 @@ exclusion_test(obs, parallel = FALSE)
 
 }
 \references{
+Watson, D., Penn, J., Gunderson, L., Bravo-Hermsdorff, G., Mastouri, A., and
+Silva, R. (2024). Bounding causal effects with leaky instruments. \emph{arXiv}
+preprint, 2404.04446.
+
 Spirtes, P. Calculation of entailed rank constraints in partially 
 non-linear and cyclic models. In \emph{Proceedings of the 29th Conference on 
 Uncertainty in Artificial Intelligence}, 606–615, 2013.

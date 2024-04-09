@@ -35,10 +35,10 @@
 #' be (A1) \emph{relevant}, i.e. associated with the treatment; (A2) 
 #' \emph{unconfounded}, i.e. independent of common causes between treatment and 
 #' outcome; and (A3) \emph{exclusive}, i.e. only affect outcomes through the 
-#' treatment. The \code{leakyIV} algorithm relaxes (A3), allowing some 
-#' information leakage from IVs \eqn{Z} to outcomes \eqn{Y} in linear systems. 
-#' While the average treatment effect (ATE) is no longer identifiable in this 
-#' setting, sharp bounds can be computed exactly. 
+#' treatment. The \code{leakyIV} algorithm (Watson et al., 2024) relaxes (A3), 
+#' allowing some information leakage from IVs \eqn{Z} to outcomes \eqn{Y} in 
+#' linear systems. While the average treatment effect (ATE) is no longer 
+#' identifiable in this setting, sharp bounds can be computed exactly. 
 #' 
 #' We assume the following structural equation for the treatment: 
 #' \eqn{X := Z \beta + \epsilon_X}, where the final summand is a noise term that
@@ -81,6 +81,10 @@
 #' 
 #' 
 #' @references  
+#' Watson, D., Penn, J., Gunderson, L., Bravo-Hermsdorff, G., Mastouri, A., and
+#' Silva, R. (2024). Bounding causal effects with leaky instruments. \emph{arXiv}
+#' preprint, 2404.04446.
+#' 
 #' Friedman, J., Hastie, T., and Tibshirani, R. (2007). Sparse inverse 
 #' covariance estimation with the lasso. \emph{Biostatistics}, 9:432-441.
 #' 
